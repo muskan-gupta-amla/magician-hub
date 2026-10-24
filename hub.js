@@ -172,6 +172,12 @@ const shortRepo = r => r.replace(/^znode(10)?-/, '').replace(/-migration$|10x-pa
 // Each run's job names say what it built: "build_services (admin, MRRSoft/znode10-admin-migration, ...)".
 const deploys = new Map();   // run id -> deploy
 const DEPLOY_RE = /^Trigger - Z10 (\w+)$/i;
+async function deployBranch(jobId) {
+  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.deployRepo}/actions/jobs/${jobId}/logs`,
+    { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'magician-hub' } });
+  if (!res.ok) return '';
+  return (/^\S+\s+branch:\s*(\S+)\s*$/m.exec(await res.text()) || [])[1] || '';
+}
 async function pollDeploys() {
   if (!cfg.deployRepo) return;
   const since = new Date(Date.now() - (cfg.deployDays || 3) * 86400000).toISOString(), envs = (cfg.deployEnvs || []).map(e => e.toUpperCase());
@@ -184,12 +190,15 @@ async function pollDeploys() {
     if (prev && prev.status === 'completed') continue;
     const login = (r.triggering_actor || r.actor || {}).login || '';
     const d = { id: r.id, env, who: teamByLogin(login) || login, status: r.status, conclusion: r.conclusion, url: r.html_url, at: r.created_at, updated: r.updated_at,
-      services: prev ? prev.services : [], failed: '' };
+      services: prev ? prev.services : [], branch: prev ? prev.branch : '', failed: '' };
     if (seen[env] <= 5) {
       const jobs = ((await gh(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs/${r.id}/jobs?per_page=50`).catch(() => null)) || {}).jobs || [];
       const svc = new Map();
       jobs.forEach(j => { const m = /build_services\w* \(([^,]+), [^/]+\/([^,)]+)/.exec(j.name); if (m && !svc.has(m[1])) svc.set(m[1], { code: m[1].trim(), repo: m[2].trim() }); });
       d.services = [...svc.values()];
+      // The branch is an input of the run; its first job prints it ("branch: int"). Read once per deploy.
+      const parse = jobs.find(j => /parse_services/.test(j.name));
+      if (!d.branch && parse) d.branch = await deployBranch(parse.id).catch(() => '');
       const bad = jobs.find(j => j.conclusion === 'failure');
       const badSvc = bad && /build_services\w* \(([^,]+)/.exec(bad.name);
       if (bad) d.failed = badSvc ? `${badSvc[1].trim()} build failed` : bad.name.replace(/^[^/]*\/\s*/, '');

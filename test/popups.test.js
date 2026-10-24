@@ -31,8 +31,9 @@ globalThis.fetch = async (url, opts = {}) => {
   if (loginExpired && opts.headers && opts.headers.Authorization === 'Bearer test') return { ok: false, status: 401, json: async () => ({}) };
   if (p.includes('/znode10-graphql-modular/')) return { ok: false, status: 404, json: async () => ({ message: 'Not Found' }) };   // a repo this login can't see: skipped, never fatal
   let m;
+  if ((m = /\/actions\/jobs\/(\d+)\/logs$/.exec(p))) return { ok: true, status: 200, text: async () => '2026-10-23T11:27:01Z   tenant: z10\n2026-10-23T11:27:01Z   branch: Z10-41122-hide-category-int\n' };
   if ((m = /\/actions\/runs\/(\d+)\/jobs$/.exec(p)) && +m[1] >= 700) {   // a deploy: its jobs name the services it built
-    return reply({ jobs: [{ name: 'trigger-build-deploy / parse_services', conclusion: 'success' },
+    return reply({ jobs: [{ id: 9100, name: 'trigger-build-deploy / parse_services', conclusion: 'success' },
       { name: 'trigger-build-deploy / build_services (admin, MRRSoft/znode10-admin-migration, ./Znode.Admin, docker-compose.yml) / build', conclusion: world.deploys.find(r => r.id === +m[1]).conclusion },
       { name: 'trigger-build-deploy / build_services (api, MRRSoft/znode10-api-migration, ./Znode.Multifront, docker-compose.yml) / build', conclusion: 'success' }] });
   }
@@ -149,7 +150,7 @@ test('environment deploys: what was deployed, by whom; a popup when your deploy 
     { ...deploy(703, 'X', 'completed', 'success', 'asha-rao-amla'), name: 'Mongo TTL Monitoring' }];
   assert.deepEqual(await step(), []);   // started: no popup
   const dev4 = hub.state().deploys.find(x => x.id === 701);
-  assert.deepEqual([dev4.env, dev4.who, dev4.services.map(x => x.code)], ['DEV4', 'asha.rao@amla.io', ['admin', 'api']]);
+  assert.deepEqual([dev4.env, dev4.who, dev4.branch, dev4.services.map(x => x.code)], ['DEV4', 'asha.rao@amla.io', 'Z10-41122-hide-category-int', ['admin', 'api']]);
   assert.equal(hub.state().deploys.find(x => x.id === 702).who, 'someone-else-amla');   // anyone's deploy is shown
   assert.ok(!hub.state().deploys.some(x => x.id === 703));   // not a deploy workflow
   Object.assign(world.deploys[0], { status: 'completed', conclusion: 'failure' });
