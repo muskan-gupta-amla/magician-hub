@@ -1,0 +1,12 @@
+{
+  "name": "magicians-hub",
+  "owner": { "name": "Magicians Team" },
+  "metadata": { "description": "Magician Hub: builds, PRs, Jira and time for the Magicians team in one page" },
+  "plugins": [
+    {
+      "name": "magician-hub",
+      "source": "./",
+      "description": "Runs Magician Hub on your PC (http://localhost:4545): your builds, team PRs with real review status, Jira tickets, time logs, standup, release notes and impact check, with popups. Uses your existing Git login; no tokens to configure."
+    }
+  ]
+}

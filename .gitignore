@@ -1,0 +1,4 @@
+node_modules/
+.env
+.asked-autostart
+jira.json

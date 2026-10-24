@@ -1,0 +1,34 @@
+{
+  "owner": "MRRSoft",
+  "repos": [
+    "znode-webstore10x-page-builder",
+    "znode10-admin-migration",
+    "znode10-api-migration",
+    "znode10-multifront-db"
+  ],
+  "email": "",
+  "teamField": "cf[10117]",
+  "teamName": "Magicians",
+  "teamDays": 90,
+  "teamMinTickets": 5,
+  "team": [],
+  "jiraUrl": "https://amla.atlassian.net/browse/",
+  "links": [
+    { "label": "Jira · Magicians sprint board", "url": "https://amla.atlassian.net/jira/software/c/projects/Z10/boards/6898" },
+    { "label": "Jira · my open tickets", "url": "https://amla.atlassian.net/issues/?jql=assignee%20%3D%20currentUser()%20AND%20resolution%20%3D%20Unresolved%20ORDER%20BY%20updated%20DESC" }
+  ],
+  "ticketPrefixes": ["Z10", "Z10LMC", "KZI", "KLRT"],
+  "nudgeTimes": ["10:00", "16:00"],
+  "trackBranches": ["int", "qat", "dev4", "dev10", "v10.14.0.0-hotfixes"],
+  "staleDays": 30,
+  "buildDays": 14,
+  "weekHours": 40,
+  "dayHours": 8,
+  "prNudgeTime": "12:00",
+  "dayCheckTime": "18:00",
+  "staleNudgeTime": "Mon 10:00",
+  "pollSeconds": 60,
+  "port": 4545,
+  "openOnStart": true,
+  "windowsPopups": true
+}

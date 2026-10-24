@@ -1,0 +1,1297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magician Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+  /* Layout: sidebar with one view per feature; the main column is cards and tables */
+  :root {
+    --bg:#F6F5FB; --panel:#FFFFFF; --panel-2:#F2F0FA; --line:#E3E0F0; --line-2:#EEECF6;
+    --fg:#191726; --fg-2:#4B4762; --muted:#7A7592;
+    --brand:#5B3CC4; --brand-2:#7B5CF0; --brand-bg:#EEE9FD;
+    --ok:#13804A; --ok-bg:#E2F5EA; --bad:#C2361F; --bad-bg:#FCE7E3; --warn:#A15C00; --warn-bg:#FDF0DA; --info:#2563B0; --info-bg:#E3EEFB;
+    --shadow:0 1px 2px rgba(25,23,38,.05), 0 10px 28px -16px rgba(25,23,38,.18);
+    --font:"Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif; --mono:"JetBrains Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0F0E17; --panel:#17161F; --panel-2:#1F1D2B; --line:#2C2A3B; --line-2:#242233;
+    --fg:#ECEAF6; --fg-2:#C3BFD8; --muted:#8E89A8;
+    --brand:#A48BFF; --brand-2:#7B5CF0; --brand-bg:#2A2248;
+    --ok:#4ED38A; --ok-bg:#16301F; --bad:#FF8574; --bad-bg:#3A1A17; --warn:#F2B35B; --warn-bg:#382910; --info:#7DB3FF; --info-bg:#172A44;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7); color-scheme:dark; } }
+  :root[data-theme="dark"] {
+    --bg:#0F0E17; --panel:#17161F; --panel-2:#1F1D2B; --line:#2C2A3B; --line-2:#242233;
+    --fg:#ECEAF6; --fg-2:#C3BFD8; --muted:#8E89A8;
+    --brand:#A48BFF; --brand-2:#7B5CF0; --brand-bg:#2A2248;
+    --ok:#4ED38A; --ok-bg:#16301F; --bad:#FF8574; --bad-bg:#3A1A17; --warn:#F2B35B; --warn-bg:#382910; --info:#7DB3FF; --info-bg:#172A44;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7); color-scheme:dark; }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 var(--font); -webkit-font-smoothing:antialiased; }
+  a { color:var(--brand); }
+  :focus-visible { outline:2px solid var(--brand); outline-offset:2px; border-radius:6px; }
+  .toasts { position:fixed; right:max(16px, env(safe-area-inset-right, 0px)); bottom:16px; display:grid; gap:8px; z-index:20; width:min(360px, calc(100vw - 32px)); }
+  .toast { all:unset; cursor:pointer; display:grid; gap:2px; background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--brand);
+    border-radius:12px; padding:11px 14px; box-shadow:var(--shadow); font-size:13px; }
+  .toast b { font-size:13.5px; } .toast span { color:var(--muted); }
+  [hidden] { display:none !important; }
+  .i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+  .mono { font-family:var(--mono); font-size:12.5px; }
+  .muted { color:var(--muted); }
+
+  /* Shell */
+  .app { display:grid; grid-template-columns:252px minmax(0,1fr); min-height:100vh; }
+  aside.side { position:sticky; top:0; height:100vh; display:flex; flex-direction:column; gap:22px; padding:20px 14px;
+    background:var(--panel); border-right:1px solid var(--line); }
+  .brand { display:flex; gap:11px; align-items:center; padding:0 8px; }
+  .brand .mark { width:36px; height:36px; border-radius:11px; display:grid; place-items:center; color:#fff;
+    background:linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow:0 6px 16px -6px var(--brand); }
+  .brand b { font-size:16px; letter-spacing:-.01em; display:block; line-height:1.2; }
+  .brand small { color:var(--muted); font-size:12px; }
+  nav.nav { display:grid; gap:2px; }
+  nav.nav a { display:flex; align-items:center; gap:11px; padding:9px 10px; border-radius:10px; color:var(--fg-2); text-decoration:none; font-weight:600; }
+  nav.nav a:hover { background:var(--panel-2); color:var(--fg); }
+  nav.nav a[aria-current="page"] { background:var(--brand-bg); color:var(--brand); }
+  nav.nav .badge { margin-left:auto; }
+  .badge { font:600 11px/1 var(--mono); padding:4px 7px; border-radius:999px; background:var(--panel-2); color:var(--muted); }
+  .badge.bad { background:var(--bad-bg); color:var(--bad); }
+  .side-foot { margin-top:auto; display:grid; gap:10px; padding:14px; border:1px solid var(--line); border-radius:14px; background:var(--bg); font-size:12.5px; }
+  .live { display:flex; align-items:center; gap:8px; color:var(--fg-2); font-weight:600; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px var(--ok-bg); flex:none; }
+  .dot.off { background:var(--bad); box-shadow:0 0 0 3px var(--bad-bg); }
+  .side-foot .row { display:flex; gap:8px; }
+
+  main { padding:28px 32px 56px; display:grid; gap:18px; align-content:start; min-width:0; }
+  main > * { min-width:0; }   /* wide tables scroll inside their panel, never the page */
+  .page-head { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-end; }
+  .page-head h1 { margin:0; font-size:26px; font-weight:800; letter-spacing:-.02em; }
+  .page-head p { margin:2px 0 0; color:var(--muted); }
+  .err { display:flex; gap:10px; align-items:center; background:var(--bad-bg); color:var(--bad); padding:11px 14px; border-radius:12px; font-weight:600; }
+  .err.pick { background:var(--brand-bg); color:var(--brand); }
+
+  /* Controls */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--line); background:var(--panel); color:var(--fg-2);
+    border-radius:10px; padding:7px 12px; font:600 13px var(--font); cursor:pointer; text-decoration:none; white-space:nowrap; }
+  .btn:hover { border-color:var(--brand); color:var(--brand); }
+  .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.primary:hover { filter:brightness(1.08); color:#fff; }
+  .btn.sm { padding:3px 10px; font-size:12px; border-radius:8px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:12px 14px; box-shadow:var(--shadow); }
+  .field { display:grid; gap:4px; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+  .field select, .field input { font:500 13.5px var(--font); text-transform:none; letter-spacing:0; color:var(--fg); background:var(--bg);
+    border:1px solid var(--line); border-radius:10px; padding:7px 10px; min-width:130px; }
+  .field input { min-width:220px; }
+  .toolbar .count { margin-left:auto; align-self:center; font-size:12.5px; color:var(--muted); font-weight:600; }
+  .toolbar .sep { width:1px; align-self:stretch; background:var(--line); }
+
+  /* Overview */
+  .kpis { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; display:grid; gap:10px;
+    box-shadow:var(--shadow); color:inherit; text-decoration:none; transition:transform .15s, border-color .15s; }
+  .kpi:hover { transform:translateY(-2px); border-color:var(--brand); }
+  .kpi .top { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-weight:700; font-size:12.5px; }
+  .kpi .ico { width:32px; height:32px; border-radius:10px; display:grid; place-items:center; background:var(--ok-bg); color:var(--ok); }
+  .kpi .n { font-size:32px; font-weight:800; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .kpi .sub { font-size:12.5px; color:var(--muted); }
+  .kpi.alert .ico { background:var(--bad-bg); color:var(--bad); }
+  .kpi.alert .n { color:var(--bad); }
+  .kpi.warn .ico { background:var(--warn-bg); color:var(--warn); }
+  .kpi.warn .n { color:var(--warn); }
+  .grid2 { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:14px; align-items:start; }
+  .stack { display:grid; gap:14px; }
+  .stack > *, .grid2 > *, .kpis > * { min-width:0; }   /* long branch names truncate instead of widening the page */
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); min-width:0; overflow:hidden; }
+  .panel-h { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line-2); }
+  .panel-h h2 { margin:0; font-size:14.5px; font-weight:700; }
+  .panel-h a { font-size:12.5px; font-weight:700; color:var(--brand); text-decoration:none; }
+  .li { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:12px; align-items:center; padding:11px 16px;
+    border-bottom:1px solid var(--line-2); color:inherit; text-decoration:none; }
+  .li:last-child { border-bottom:0; }
+  a.li:hover { background:var(--panel-2); }
+  .li .t { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .li .s { font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .li .r { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .tag { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; flex:none; }
+  .tag.ok { background:var(--ok-bg); color:var(--ok); }
+  .tag.bad { background:var(--bad-bg); color:var(--bad); }
+  .review { display:flex; align-items:center; gap:8px; }
+  .health { display:grid; }
+  .health button { all:unset; cursor:pointer; display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line-2); }
+  .health button:last-child { border-bottom:0; }
+  .health button:hover { background:var(--panel-2); }
+  .health button:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
+  .health .cnt { margin-left:auto; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; }
+  .tag.info { background:var(--info-bg); color:var(--info); }
+  .tag.warn { background:var(--warn-bg); color:var(--warn); }
+  .emptyst { padding:30px 16px; text-align:center; color:var(--muted); }
+  .emptyst b { display:block; color:var(--fg); font-size:14.5px; margin-bottom:2px; }
+
+  /* Tables */
+  .tbl { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:13.5px; font-variant-numeric:tabular-nums; }
+  th { font:700 11px var(--font); letter-spacing:.07em; text-transform:uppercase; color:var(--muted); text-align:left; padding:10px 14px;
+    background:var(--panel-2); white-space:nowrap; }
+  td { padding:11px 14px; border-top:1px solid var(--line-2); vertical-align:middle; }
+  tbody tr:not(.empty):hover td { background:var(--panel-2); }
+  .pr-t { min-width:220px; }
+  .pr-t .sub { flex-wrap:wrap; }
+  td .muted { white-space:nowrap; }
+  .pr-t a { font-weight:700; color:var(--fg); text-decoration:none; }
+  .pr-t a:hover { color:var(--brand); text-decoration:underline; }
+  .pr-t .sub { display:flex; gap:6px; align-items:center; margin-top:3px; font-size:12px; color:var(--muted); }
+  .chip { display:inline-flex; align-items:center; font:600 11.5px var(--mono); padding:2px 7px; border-radius:6px; background:var(--panel-2);
+    color:var(--fg-2); border:1px solid var(--line); white-space:nowrap; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font:700 11.5px var(--font); padding:4px 10px; border-radius:999px; white-space:nowrap; text-decoration:none; }
+  .pill::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .s-ok { background:var(--ok-bg); color:var(--ok); }
+  .s-bad { background:var(--bad-bg); color:var(--bad); }
+  .s-warn { background:var(--warn-bg); color:var(--warn); }
+  .s-run { background:var(--info-bg); color:var(--info); }
+  .s-run::before { animation:pulse 1.2s ease-in-out infinite; }
+  .s-off { background:var(--panel-2); color:var(--muted); }
+  .s-brand { background:var(--brand-bg); color:var(--brand); }
+  @keyframes pulse { 50% { opacity:.25; } }
+  @media (prefers-reduced-motion: reduce) { .s-run::before { animation:none; } .kpi { transition:none; } }
+  .who { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .av { width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font:700 10.5px var(--font); color:#fff; flex:none; }
+  .avs { display:flex; }
+  .avs .av { border:2px solid var(--panel); margin-left:-7px; }
+  .avs .av:first-child { margin-left:0; }
+  .age { font-weight:600; white-space:nowrap; }
+  .age.warn { color:var(--warn); } .age.bad { color:var(--bad); }
+  .reason { font:12px/1.45 var(--mono); color:var(--bad); }
+  .build { min-width:220px; }
+  .build .br-name { font:600 13px var(--mono); color:var(--fg); text-decoration:none; overflow-wrap:anywhere; }
+  .build .br-name:hover { color:var(--brand); text-decoration:underline; }
+  .build .sub { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; font-size:12.5px; color:var(--muted); }
+  .build .reason { margin-top:4px; }
+  td.fit { width:1%; white-space:nowrap; }
+  details.parked { background:var(--panel); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  details.parked summary { cursor:pointer; padding:13px 16px; font-weight:700; display:flex; gap:10px; align-items:center; list-style:none; }
+  details.parked summary::-webkit-details-marker { display:none; }
+  details.parked summary .muted { font-weight:500; font-size:12.5px; }
+  details.parked summary .chev { margin-left:auto; transition:transform .15s; }
+  details.parked[open] summary .chev { transform:rotate(90deg); }
+
+  /* Where's my fix */
+  .hero-search { background:linear-gradient(135deg, var(--brand-bg), var(--panel) 70%); border:1px solid var(--line); border-radius:18px;
+    padding:24px; box-shadow:var(--shadow); display:grid; gap:12px; }
+  .hero-search h2 { margin:0; font-size:18px; font-weight:800; }
+  .searchbox { display:flex; gap:10px; flex-wrap:wrap; }
+  .searchbox input { flex:1; min-width:220px; font:600 16px var(--mono); padding:11px 14px; border:1px solid var(--line); border-radius:12px;
+    background:var(--panel); color:var(--fg); }
+  .searchbox .btn { padding:11px 18px; font-size:14px; border-radius:12px; }
+  .hint { font-size:12.5px; color:var(--muted); }
+  .hint.err-t { color:var(--bad); font-weight:600; }
+  .hint.pad:not(:empty) { padding:10px 16px 0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  pre.draft { margin:0; padding:16px; font:13.5px/1.7 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+  pre.draft:empty { display:none; }
+  .verdict { display:grid; gap:4px; padding:16px 18px; border-radius:16px; }
+  .verdict b { font-size:18px; font-weight:800; }
+  .verdict.bad { background:var(--bad-bg); color:var(--bad); }
+  .verdict.ok { background:var(--ok-bg); color:var(--ok); }
+  .verdict.wait { background:var(--warn-bg); color:var(--warn); }
+  .checks { margin:6px 0 2px; padding:0; list-style:none; display:grid; gap:5px; }
+  .checks li { display:flex; gap:8px; align-items:center; font-weight:600; }
+  .verdict .scope { font-size:12.5px; opacity:.85; }
+  .uses { display:grid; gap:4px; justify-items:start; }
+  .uses a { color:var(--fg); text-decoration:none; display:flex; gap:6px; align-items:center; }
+  .uses a:hover { color:var(--brand); text-decoration:underline; }
+  .pad-row { padding:12px 16px; border-top:1px solid var(--line-2); }
+  .nav-label { font:700 10.5px var(--font); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); padding:14px 10px 4px; }
+  .nav-label:first-child { padding-top:0; }
+  .kpis.four { grid-template-columns:repeat(4, minmax(0,1fr)); }
+  .toolbar.flat { border:0; box-shadow:none; border-radius:0; }
+  .field.wide { flex:1 1 240px; } .field.wide input { width:100%; }
+  #tmKey { max-width:320px; }
+  .week { display:grid; gap:8px; padding:14px 16px; }
+  .day { display:grid; grid-template-columns:96px minmax(0,1fr) 72px; gap:12px; align-items:center; font-size:13.5px; }
+  .day.today { font-weight:700; }
+  .bar { height:10px; background:var(--panel-2); border-radius:99px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--brand); border-radius:99px; }
+  .day .h { text-align:right; font-variant-numeric:tabular-nums; }
+  .over { color:var(--bad); font-weight:700; } .left { color:var(--ok); font-weight:600; }
+  .links { display:grid; }
+  .links .lrow { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--line-2); }
+  .links .lrow:last-child { border-bottom:0; }
+  .links .lrow a { font-weight:600; text-decoration:none; }
+  .links .lrow a:hover { text-decoration:underline; }
+  .links .lrow .chip { min-width:72px; justify-content:center; }
+  .r .pill + .pill { margin-left:6px; }
+  .li.clickable { cursor:pointer; }
+  .li.clickable:hover { background:var(--panel-2); }
+  .li.clickable:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
+  .searchbox input + input { min-width:180px; }
+  .mark { display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; white-space:nowrap; }
+  .mark.yes { color:var(--ok); } .mark.no { color:var(--bad); } .mark.na { color:var(--muted); font-weight:500; }
+  th.br { font-family:var(--mono); text-transform:none; letter-spacing:0; font-size:12px; }
+  .spinner { width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--brand); border-radius:50%; animation:spin .8s linear infinite; display:inline-block; vertical-align:-2px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  @media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
+  @media (max-width:700px) { .kpis, .kpis.four { grid-template-columns:1fr; } .day { grid-template-columns:72px minmax(0,1fr) 60px; } }
+  @media (max-width:860px) {
+    .app { grid-template-columns:minmax(0,1fr); }   /* never wider than the screen, whatever the content */
+    aside.side { position:static; height:auto; flex-direction:row; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 16px;
+      border-right:0; border-bottom:1px solid var(--line); }
+    nav.nav { display:flex; overflow-x:auto; width:100%; gap:4px; }
+    nav.nav a { white-space:nowrap; }
+    .side-foot { display:none; }
+    main { padding:20px 16px 48px; }
+    .field input { min-width:0; width:100%; }
+    .field { flex:1 1 140px; }
+    .toolbar .sep { display:none; }
+  }
+  @media (max-width:1200px) { td .who span:last-child { display:none; } }   /* avatar only; name on hover */
+  @media (max-width:640px) { th, td { padding:10px 8px; } .build, .pr-t { min-width:160px; } .pill { padding:3px 8px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <span class="mark"><svg class="i" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span>
+      <div><b>Magician Hub</b><small>Znode · Team Magicians</small></div>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <div class="nav-label">My day</div>
+      <a href="#overview" data-go="overview"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview<span class="badge bad" id="nb-attn" hidden></span></a>
+      <a href="#standup" data-go="standup"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Standup</a>
+      <a href="#time" data-go="time"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Time</a>
+      <div class="nav-label">Team</div>
+      <a href="#prs" data-go="prs"><svg class="i" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>Team PRs<span class="badge" id="nb-prs"></span></a>
+      <a href="#builds" data-go="builds"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Builds<span class="badge" id="nb-builds"></span></a>
+      <div class="nav-label">Tools</div>
+      <a href="#fix" data-go="fix"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Ticket lookup<span class="badge" title="Press / anywhere">/</span></a>
+      <a href="#impact" data-go="impact"><svg class="i" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>Impact check</a>
+      <a href="#release" data-go="release"><svg class="i" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l8.59-8.59a1 1 0 0 0 0-1.41Z"/><circle cx="7" cy="7" r="1.5"/></svg>Release notes</a>
+    </nav>
+    <div class="side-foot">
+      <div class="live"><span class="dot" id="liveDot"></span><span id="meta">Connecting…</span></div>
+      <div class="muted" id="meta2"></div>
+      <button class="btn sm" type="button" id="alertBtn"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span id="alertText">Browser alerts</span></button>
+      <button class="btn sm" type="button" id="alertTest" hidden>Send test alert</button>
+      <div class="muted" id="alertHint"></div>
+      <button class="btn sm" type="button" id="themeBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>Dark / light theme</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="page-head">
+      <div><h1 id="pageTitle">Overview</h1><p id="pageSub"></p></div>
+      <label class="field">You<select id="fMe" aria-label="Who are you?"><option value="">Pick your name</option></select></label>
+    </div>
+    <div class="err pick" id="pickMe" hidden>Pick your name at the top right to see your PRs, review requests and alerts.</div>
+    <div class="err" id="err" hidden></div>
+
+    <!-- Filters shared by Team PRs and Builds -->
+    <div class="toolbar" id="toolbar" role="search" aria-label="Filters" hidden>
+      <label class="field">Person<select id="fWho"><option value="">Everyone</option><option value="me">Me</option></select></label>
+      <label class="field">Repo<select id="fRepo"><option value="">All repos</option></select></label>
+      <label class="field only-builds">Status<select id="fStatus">
+        <option value="">Any</option><option value="failure">Failed</option><option value="running">Running</option><option value="success">Passed</option>
+      </select></label>
+      <span class="sep only-prs"></span>
+      <label class="field only-prs">Into<select id="fBase"><option value="">Any branch</option></select></label>
+      <label class="field only-prs">Waiting<select id="fAge">
+        <option value="">Any time</option><option value="1">Over 1 day</option><option value="3">Over 3 days</option><option value="7">Over 7 days</option>
+      </select></label>
+      <label class="field only-prs">Review<select id="fRev">
+        <option value="">Any</option><option value="approved">Approved</option><option value="changes">Changes requested</option>
+        <option value="waiting">Awaiting review</option><option value="none">No reviewer</option><option value="me">Waiting on me</option>
+      </select></label>
+      <label class="field only-prs">Drafts<select id="fDraft">
+        <option value="">Show</option><option value="hide">Hide</option><option value="only">Only drafts</option>
+      </select></label>
+      <label class="field">Search<input id="fText" placeholder="Ticket, branch or title" autocomplete="off"></label>
+      <button type="button" class="btn" id="fClear">Clear</button>
+      <span class="count" id="fCount"></span>
+    </div>
+
+    <!-- Overview -->
+    <section data-view="overview" class="stack">
+      <div class="kpis">
+        <a class="kpi" href="#prs" id="k-mine"><div class="top">My open PRs<span class="ico"><svg class="i" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg></span></div><div class="n">–</div><div class="sub"></div></a>
+        <a class="kpi" href="#prs" id="k-changes"><div class="top">Changes requested<span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg></span></div><div class="n">–</div><div class="sub"></div></a>
+        <a class="kpi" href="#builds" id="k-team"><div class="top">Team builds · 24h<span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span></div><div class="n">–</div><div class="sub"></div></a>
+      </div>
+      <div class="grid2">
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-h"><h2>Needs your attention</h2></div>
+            <div id="attn"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>My open PRs</h2><a href="#prs" id="myPrsAll">All my PRs →</a></div>
+            <div id="myPrs"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>My Jira tickets</h2><a id="myJiraAll" target="_blank" rel="noopener">Open in Jira →</a></div>
+            <div id="myJira"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>Quick links</h2></div>
+            <div class="links" id="links"></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-h"><h2>Team review health</h2><span class="muted" id="healthTotal"></span></div>
+            <div class="health" id="health"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>Latest team builds</h2><a href="#builds">All builds →</a></div>
+            <div id="recent"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>Waiting longest</h2><a href="#prs">All PRs →</a></div>
+            <div id="oldest"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Where's my fix -->
+    <section data-view="fix" class="stack" hidden>
+      <form class="hero-search" id="fixForm">
+        <h2>Everything about a ticket</h2>
+        <div class="searchbox">
+          <input id="fixKey" placeholder="Z10-41590, Jira link or branch" aria-label="Ticket key, Jira link or branch name" autocomplete="off">
+          <button class="btn primary" type="submit"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Look up</button>
+        </div>
+        <div class="hint" id="fixMsg">Its PRs with review status and checks, its builds, and which branches have it (squashed down-merges included). Press / anywhere to come here.</div>
+      </form>
+      <div id="fixOut" class="stack" hidden>
+        <div class="panel">
+          <div class="panel-h"><h2 id="fixKeyLabel"></h2>
+            <div class="row"><a class="btn" id="fixJira" target="_blank" rel="noopener">Open in Jira</a><button class="btn" type="button" id="fixImpact">Is it safe to merge?</button></div></div>
+          <div class="pad-row row" id="fixInfo"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Pull requests</h2></div>
+          <div class="tbl"><table>
+            <thead><tr><th>Pull request</th><th>By</th><th>State</th></tr></thead>
+            <tbody id="fixPrs"></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Builds</h2><span class="muted">last 14 days</span></div>
+          <div class="tbl"><table>
+            <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
+            <tbody id="fixBuilds"></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Which branches have it</h2></div>
+          <div class="tbl"><table><thead id="fixHead"></thead><tbody id="fixRows"></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Team PRs -->
+    <section data-view="prs" class="stack" hidden>
+      <div class="panel">
+        <div class="tbl"><table>
+          <thead><tr><th>Pull request</th><th>By</th><th>Waiting</th><th>Review</th><th></th></tr></thead>
+          <tbody id="prRows"><tr class="empty"><td colspan="5" class="emptyst">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+      <details class="parked" id="parked">
+        <summary><svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>Parked <span class="badge" id="parkedCount">0</span>
+          <span class="muted">Drafts, POCs, no ticket, inactive, hidden</span></summary>
+        <div class="tbl"><table>
+          <thead><tr><th>Pull request</th><th>By</th><th>Waiting</th><th>Why parked</th><th></th></tr></thead>
+          <tbody id="parkedRows"></tbody>
+        </table></div>
+      </details>
+    </section>
+
+    <!-- Builds -->
+    <section data-view="builds" hidden>
+      <div class="panel">
+        <div class="tbl"><table>
+          <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
+          <tbody id="rows"><tr class="empty"><td colspan="4" class="emptyst">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- Standup -->
+    <section data-view="standup" class="stack" hidden>
+      <div class="panel">
+        <div class="panel-h"><h2 id="suTitle">Standup</h2>
+          <div class="row"><button class="btn" id="suRefresh" type="button">Refresh</button><button class="btn primary" id="suCopy" type="button" data-label="Copy">Copy</button></div></div>
+        <div class="hint pad" id="suMsg"></div>
+        <pre class="draft" id="suText"></pre>
+      </div>
+    </section>
+
+    <!-- Time -->
+    <section data-view="time" class="stack" hidden>
+      <div class="panel">
+        <div class="panel-h"><h2 id="tmTitle">Time</h2>
+          <div class="row"><button class="btn" id="tmRefresh" type="button">Refresh</button><button class="btn primary" id="tmCopy" type="button" data-label="Copy timesheet">Copy timesheet</button></div></div>
+        <div class="hint pad" id="tmMsg"></div>
+      </div>
+      <div id="tmOut" class="stack" hidden>
+        <div class="panel" id="tmLogPanel" hidden>
+          <div class="panel-h"><h2>Log time</h2><span class="muted" id="tmLogWho"></span></div>
+          <form class="toolbar flat" id="tmLogForm">
+            <label class="field">Ticket<select id="tmKey"></select></label>
+            <label class="field">Time<input id="tmHours" placeholder="2h 30m" autocomplete="off"></label>
+            <label class="field">Date<input id="tmDate" type="date"></label>
+            <label class="field wide">Comment<input id="tmComment" placeholder="What you worked on" autocomplete="off"></label>
+            <button class="btn primary" type="submit">Log time</button>
+            <span class="count" id="tmLogMsg"></span>
+          </form>
+        </div>
+        <div class="kpis four">
+          <div class="kpi" id="k-today"><div class="top">Logged today</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="k-week"><div class="top">This week</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="k-last"><div class="top">Last week</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="k-over"><div class="top">Over estimate</div><div class="n">–</div><div class="sub">open tickets</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>This week, day by day</h2><span class="muted" id="tmWeekTotal"></span></div>
+          <div class="week" id="tmWeek"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>My tickets: estimate vs logged</h2><span class="muted">Click a ticket to log time in Jira</span></div>
+          <div class="tbl"><table>
+            <thead><tr><th>Ticket</th><th>Status</th><th>Estimate</th><th>Logged</th><th>Remaining</th><th>Estimate − logged</th></tr></thead>
+            <tbody id="tmTickets"></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Recent time logs</h2><span class="muted">last 14 days</span></div>
+          <div id="tmLogs"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Release notes -->
+    <section data-view="release" class="stack" hidden>
+      <form class="hero-search" id="relForm">
+        <h2>What's in this release?</h2>
+        <div class="searchbox">
+          <input id="relFrom" placeholder="From, e.g. v10.14.0.6" aria-label="From tag or branch" autocomplete="off">
+          <input id="relTo" placeholder="To, e.g. v10.14.0.0-hotfixes" aria-label="To tag or branch" autocomplete="off">
+          <button class="btn primary" type="submit">Build notes</button>
+        </div>
+        <div class="hint" id="relMsg">Tickets in the commits between two tags or branches, in every repo, including squashed down-merges.</div>
+      </form>
+      <div class="panel" id="relOut" hidden>
+        <div class="panel-h"><h2 id="relTitle"></h2><button class="btn primary" id="relCopy" type="button" data-label="Copy as text">Copy as text</button></div>
+        <div class="tbl"><table><thead><tr><th>Ticket</th><th>Change</th><th>Jira status</th><th>Repos</th></tr></thead><tbody id="relRows"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- Impact check -->
+    <section data-view="impact" class="stack" hidden>
+      <form class="hero-search" id="impForm">
+        <h2>Is it safe to merge?</h2>
+        <div class="searchbox">
+          <input id="impPr" placeholder="PR link or ticket, e.g. Z10-41590" aria-label="PR link or ticket" autocomplete="off">
+          <button class="btn primary" type="submit">Check</button>
+        </div>
+        <div class="hint" id="impMsg">Reads the PR's changes for things that break other code: new or removed procedure parameters, dropped or renamed columns, changed API routes, removed model properties, interface methods, frontend exports, config settings, text keys and deleted files. Then finds where the other Znode repos use them.</div>
+      </form>
+      <div id="impOut" class="stack" hidden>
+        <div class="verdict" id="impVerdict"></div>
+        <div class="panel">
+          <div class="panel-h"><h2>What this PR changes</h2><span class="muted" id="impCount"></span></div>
+          <div class="tbl"><table>
+            <thead><tr><th>Changed item</th><th>Type</th><th>Risk and why</th><th>Used in another repo?</th></tr></thead>
+            <tbody id="impRows"></tbody>
+          </table></div>
+          <div class="pad-row" id="impMoreRow"><button class="btn" type="button" id="impMore"></button></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script>
+const $ = id => document.getElementById(id);
+const HOUR = 3600000, DAY = 24 * HOUR;
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function cell(tr, content, cls) {
+  const td = tr.insertCell(); if (cls) td.className = cls;
+  if (content instanceof Node) td.appendChild(content); else td.textContent = content || '';
+  return td;
+}
+function link(text, href, cls) { const a = el('a', cls, text); a.href = href; a.target = '_blank'; a.rel = 'noopener'; return a; }
+function pill(text, cls) { return el('span', 'pill ' + cls, text); }
+function emptyRow(body, title, text, cols) {
+  body.textContent = '';
+  const tr = body.insertRow(); tr.className = 'empty';
+  const td = tr.insertCell(); td.colSpan = cols; td.className = 'emptyst';
+  td.append(el('b', null, title)); if (text) td.append(text);
+}
+function emptyBox(box, title, text) { box.textContent = ''; const d = el('div', 'emptyst'); d.append(el('b', null, title), text || ''); box.append(d); }
+
+// Small inline icons built with DOM APIs (static path data only).
+const ICONS = {
+  check: 'M20 6 9 17l-5-5', x: 'M18 6 6 18M6 6l12 12', minus: 'M5 12h14',
+  fail: 'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20M15 9l-6 6M9 9l6 6',
+  eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6',
+  msg: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z',
+  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8'
+};
+function icon(name) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('class', 'i');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', ICONS[name]); s.append(p); return s;
+}
+
+function ago(iso) {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+  if (m < 1) return 'just now'; if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60); return h < 24 ? h + 'h ago' : Math.floor(h / 24) + 'd ' + (h % 24) + 'h ago';
+}
+function waited(iso) {
+  const h = Math.floor((Date.now() - new Date(iso)) / HOUR);
+  return el('span', h >= 168 ? 'age bad' : h >= 72 ? 'age warn' : 'age', h < 24 ? h + 'h' : Math.floor(h / 24) + 'd ' + (h % 24) + 'h');
+}
+const shortRepo = r => r.replace(/^znode(10)?-/, '').replace(/-migration$|10x-page-builder$|^multifront-/, '');
+function repoChip(r) { const c = el('span', 'chip', shortRepo(r)); c.title = r; return c; }
+
+// People: builds carry the commit email, PRs the GitHub login (first-last-amla).
+const COLORS = ['#5B3CC4', '#0E7C86', '#B5427A', '#2563B0', '#A15C00', '#13804A', '#7C3AED', '#C2361F'];
+function personName(id) {
+  const parts = id.includes('@') ? id.split('@')[0].split('.') : id.replace(/-amla$/, '').split('-');
+  return parts.filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+function avatar(id) {
+  const name = personName(id), a = el('span', 'av', name.split(' ').map(w => w[0]).slice(0, 2).join(''));
+  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  a.style.background = COLORS[h % COLORS.length]; a.title = name; return a;
+}
+function who(id) { const w = el('span', 'who'); w.append(avatar(id), el('span', null, personName(id))); return w; }
+
+const STATES = { success: ['Passed', 's-ok'], failure: ['Failed', 's-bad'], timed_out: ['Timed out', 's-bad'], cancelled: ['Cancelled', 's-off'],
+  running: ['Running', 's-run'], skipped: ['Skipped', 's-off'], action_required: ['Needs action', 's-warn'] };
+const runState = r => r.status !== 'completed' ? 'running' : (r.conclusion || 'other');
+function statePill(r) { const [t, c] = STATES[runState(r)] || ['Other', 's-off']; return link(t, r.url, 'pill ' + c); }
+
+// Views
+const VIEWS = {
+  overview: ['Overview', 'What needs you today'],
+  fix: ['Ticket lookup', 'PRs, builds and branches for one ticket'],
+  prs: ['Team PRs', 'Open pull requests'],
+  builds: ['Builds', 'GitHub Actions runs'],
+  standup: ['Standup', 'Your update, drafted from GitHub and Jira'],
+  time: ['Time', 'What you logged in Jira, and what is left'],
+  release: ['Release notes', 'Tickets between two tags or branches'],
+  impact: ['Impact check', 'Will a PR break another repo?']
+};
+let view = 'overview';
+function show(v) {
+  if (!VIEWS[v]) v = 'overview';
+  view = v;
+  document.querySelectorAll('[data-view]').forEach(s => { s.hidden = s.dataset.view !== v; });
+  document.querySelectorAll('nav.nav a').forEach(a => a.dataset.go === v ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  $('pageTitle').textContent = VIEWS[v][0]; $('pageSub').textContent = VIEWS[v][1];
+  $('toolbar').hidden = !(v === 'prs' || v === 'builds');
+  document.querySelectorAll('.only-prs').forEach(e => { e.hidden = v !== 'prs'; });
+  document.querySelectorAll('.only-builds').forEach(e => { e.hidden = v !== 'builds'; });
+  try { localStorage.setItem('hub.view', v); } catch (e) {}
+  render();
+  if (v === 'standup') loadStandup();
+  if (v === 'time') loadTime();
+}
+
+// Theme: follows Windows unless you pick one.
+function setTheme(t) {
+  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  try { t ? localStorage.setItem('hub.theme', t) : localStorage.removeItem('hub.theme'); } catch (e) {}
+}
+$('themeBtn').addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  setTheme(dark ? 'light' : 'dark');
+});
+try { const t = localStorage.getItem('hub.theme'); if (t) setTheme(t); } catch (e) {}
+
+// Browser alerts: new hub events become notifications; clicking one opens the build or PR.
+// Only events newer than the last one seen are shown, so opening or reloading the page never replays old ones.
+const canNotify = 'Notification' in window;
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+function alertsOn() { return canNotify && Notification.permission === 'granted' && store.get('hub.alerts') !== 'off'; }
+function showAlert(title, body, url, tag) {
+  try {
+    const n = new Notification(title, { body, tag });   // same tag in two tabs = one notification
+    n.onclick = () => { window.open(url, '_blank', 'noopener'); n.close(); };
+  } catch (e) {}   // some browsers only allow notifications from a service worker; the on-page alert still shows
+  // Also show it on the page while it is visible: Windows hides banners when Do not disturb is on.
+  if (document.visibilityState !== 'visible') return;
+  const t = el('button', 'toast'); t.type = 'button'; t.append(el('b', null, title), el('span', null, body));
+  t.addEventListener('click', () => { window.open(url, '_blank', 'noopener'); t.remove(); });
+  $('toasts').append(t); setTimeout(() => t.remove(), 10000);
+}
+function renderAlertBtn() {
+  const perm = canNotify ? Notification.permission : 'unsupported';
+  $('alertText').textContent = perm === 'unsupported' ? 'Alerts not supported' : perm === 'denied' ? 'Alerts blocked in browser'
+    : alertsOn() ? 'Browser alerts on' : 'Turn on browser alerts';
+  $('alertBtn').classList.toggle('primary', alertsOn());
+  $('alertBtn').disabled = perm === 'unsupported' || perm === 'denied';
+  $('alertTest').hidden = !alertsOn();
+  $('alertHint').textContent = perm === 'denied' ? 'Allow notifications for this site: lock icon in the address bar → Notifications → Allow.'
+    : alertsOn() ? 'No alert? Press Win+N, and turn off Do not disturb in Windows notifications.'
+    : perm === 'default' && store.get('hub.alerts') === 'on' ? 'Your browser may show the request as a bell icon in the address bar.' : '';
+}
+const testAlert = () => showAlert('Magician Hub', 'Test alert. Click an alert to open the build or PR.', location.href, 'hub-test-' + Date.now());
+$('alertBtn').addEventListener('click', async () => {
+  if (alertsOn()) { store.set('hub.alerts', 'off'); return renderAlertBtn(); }
+  if (Notification.permission !== 'granted') await Notification.requestPermission();
+  store.set('hub.alerts', 'on'); renderAlertBtn();
+  if (alertsOn()) testAlert();
+});
+$('alertTest').addEventListener('click', testAlert);
+function handleEvents(events) {
+  const last = store.get('hub.lastEvent');
+  const newest = events.length ? events[events.length - 1].at : null;
+  events.filter(e => e.at > last && e.person === viewer()).forEach(e => { if (alertsOn()) showAlert(e.title, e.body, e.url, e.at + e.title); });
+  if (newest && newest > last) store.set('hub.lastEvent', newest);
+}
+if (store.get('hub.lastEvent') === null) store.set('hub.lastEvent', new Date().toISOString());
+renderAlertBtn();
+
+// Filters: person matches a build by commit email and a PR by GitHub login (first.last@ -> first-last-...).
+const FILTERS = ['fWho', 'fRepo', 'fStatus', 'fText', 'fBase', 'fAge', 'fRev', 'fDraft'];
+const FIXED = ['fStatus', 'fText', 'fAge', 'fRev', 'fDraft'];   // options known up front; restore on load
+const nameOf = em => em.split('@')[0].replace(/\./g, '-');
+let state = null;
+
+// PRs each person hides themselves; kept in this browser only.
+let hiddenPrs = new Set();
+try { hiddenPrs = new Set(JSON.parse(localStorage.getItem('hub.hiddenPrs') || '[]')); } catch (e) {}
+function toggleButton(url, label) {
+  const b = el('button', 'btn sm', label); b.type = 'button';
+  b.addEventListener('click', () => {
+    if (hiddenPrs.has(url)) hiddenPrs.delete(url); else hiddenPrs.add(url);
+    try { localStorage.setItem('hub.hiddenPrs', JSON.stringify([...hiddenPrs])); } catch (e) {}
+    render();
+  });
+  return b;
+}
+const whyParked = p => hiddenPrs.has(p.url) ? 'Hidden by you' : p.parked;
+
+const REVIEW = { approved: ['Approved', 's-ok'], changes: ['Changes requested', 's-bad'], commented: ['Commented', 's-run'],
+  waiting: ['Awaiting review', 's-warn'], none: ['No reviewer', 's-off'] };
+function reviewPill(p) { const [t, c] = REVIEW[p.review] || REVIEW.none; return pill(t, c); }
+
+// Jira: ticket keys in PR titles and branches, linked to their Jira status.
+const JIRA_CAT = { new: 's-off', indeterminate: 's-run', done: 's-ok' };
+const jiraUrl = key => ((state && state.jira) || 'https://amla.atlassian.net/browse/') + key;
+const keysOf = text => state ? [...text.matchAll(new RegExp(`\\b(${(state.ticketPrefixes || ['Z10']).join('|')})[-_ ](\\d+)\\b`, 'gi'))].map(m => (m[1] + '-' + m[2]).toUpperCase()) : [];
+const jiraFor = p => { const k = keysOf(`${p.title} ${p.head || ''}`).find(x => state.jiraKeys && state.jiraKeys[x]); return k ? state.jiraKeys[k] : null; };
+function jiraPill(t, prOpen) {
+  const mismatch = prOpen && t.cat === 'done';   // ticket closed while its PR is still open
+  const p = link(t.key + ' · ' + t.status, jiraUrl(t.key), 'pill ' + (mismatch ? 's-warn' : JIRA_CAT[t.cat] || 's-off'));
+  p.title = mismatch ? 'The Jira ticket is done but this PR is still open' : t.summary;
+  return p;
+}
+// The viewer's own open Jira tickets, fetched from the hub when they look (it caches for 5 minutes).
+const myJira = { person: null, at: 0, list: null, error: null, loading: false };
+const myJiraList = () => (myJira.person === viewer() ? myJira.list : null);
+async function loadMyJira(force) {
+  const v = viewer();
+  if (!v || !state || !state.jiraOn || myJira.loading) return;
+  if (!force && myJira.person === v && Date.now() - myJira.at < 300000) return;
+  myJira.loading = true;
+  try {
+    const res = await fetch('/api/jira-mine?' + new URLSearchParams({ person: v })), d = await res.json();
+    Object.assign(myJira, { person: v, at: Date.now(), list: res.ok ? d.tickets : null, error: res.ok ? null : d.error });
+  } catch (e) { myJira.error = 'Hub is not running.'; }
+  myJira.loading = false;
+  render();
+}
+function openTicket(key) { location.hash = 'fix'; show('fix'); $('fixKey').value = key; $('fixForm').requestSubmit(); }
+
+// A PR's checks = the latest team build on its branch (runs arrive newest first).
+const CHECKS = { success: ['Checks passed', 's-ok'], failure: ['Checks failed', 's-bad'], timed_out: ['Checks failed', 's-bad'], running: ['Checks running', 's-run'] };
+function checksOf(p, asLink = true) {
+  const r = state && p.head && state.runs.find(x => x.repo === p.repo && x.branch === p.head);
+  if (!r) return null;
+  const [t, c] = CHECKS[runState(r)] || ['Checks ' + runState(r).replace('_', ' '), 's-off'];
+  return asLink ? link(t, r.url, 'pill ' + c) : pill(t, c);
+}
+
+function prTitle(p) {
+  const box = el('div', 'pr-t');
+  box.append(link(p.title, p.url));
+  const sub = el('div', 'sub'); sub.append(repoChip(p.repo), el('span', null, '#' + p.number + ' →'), el('span', 'chip', p.base));
+  if (p.draft) sub.append(pill('Draft', 's-brand'));
+  const checks = checksOf(p); if (checks) sub.append(checks);
+  const ticket = state && jiraFor(p); if (ticket) sub.append(jiraPill(ticket, !p.state || p.state === 'open'));
+  box.append(sub); return box;
+}
+function buildRow(body, r) {
+  const tr = body.insertRow();
+  cell(tr, statePill(r), 'fit');
+  const b = el('div', 'build'), sub = el('div', 'sub');
+  sub.append(repoChip(r.repo), el('span', null, r.workflow));
+  b.append(link(r.branch, r.url, 'br-name'), sub);
+  if (r.reason) b.append(el('div', 'reason', r.reason));
+  cell(tr, b); cell(tr, who(r.author), 'fit');
+  const t = cell(tr, ago(r.updated), 'fit muted'); t.title = new Date(r.updated).toLocaleString();
+}
+function renderLinks(d) {
+  const box = $('links');
+  if (box.dataset.done) return;
+  box.dataset.done = '1';
+  (d.links || []).forEach(l => { const row = el('div', 'lrow'); row.append(link(l.label, l.url)); box.append(row); });
+  d.repos.forEach(r => {
+    const row = el('div', 'lrow'), base = `https://github.com/${d.owner}/${r}`;
+    row.append(repoChip(r), link('Code', base), link('Pull requests', base + '/pulls'), link('Actions', base + '/actions'));
+    box.append(row);
+  });
+}
+function prRow(body, p) {
+  const tr = body.insertRow();
+  cell(tr, prTitle(p)); cell(tr, who(p.author), 'fit'); cell(tr, waited(p.created), 'fit');
+  return tr;
+}
+
+function fillSelect(id, values, label) {
+  const sel = $(id);
+  if (sel.dataset.filled) return;
+  values.forEach(v => { const o = el('option', null, label(v)); o.value = v; sel.append(o); });
+  sel.dataset.filled = '1';
+  try { sel.value = localStorage.getItem('hub.' + id) || ''; } catch (e) {}
+}
+
+function filtered(d) {
+  const whoV = $('fWho').value, repo = $('fRepo').value, status = $('fStatus').value, text = $('fText').value.trim().toLowerCase();
+  const person = whoV === 'me' ? d.email : whoV;
+  const runs = d.runs.filter(r =>
+    (!person || r.author === person) && (!repo || r.repo === repo) && (!status || runState(r) === status) &&
+    (!text || (r.branch + ' ' + r.workflow).toLowerCase().includes(text)));
+  const base = $('fBase').value, days = Number($('fAge').value), rev = $('fRev').value, draft = $('fDraft').value;
+  const prs = d.prs.filter(p =>
+    (!person || (whoV === 'me' ? isMe(p.author) : p.author.toLowerCase().startsWith(nameOf(person)))) &&
+    (!repo || p.repo === repo) && (!text || (p.title + ' ' + p.repo + ' #' + p.number).toLowerCase().includes(text)) &&
+    (!base || p.base === base) &&
+    (!days || Date.now() - new Date(p.created) > days * DAY) &&
+    (!rev || (rev === 'me' ? p.reviewers.some(isMe) : p.review === rev)) &&
+    (!draft || (draft === 'hide' ? !p.draft : p.draft)));
+  return { runs, prs };
+}
+
+// Who is looking: the company sign-in (hosted), the name picked here, or your Git email (local).
+function viewer() { return (state && state.signedIn && state.viewer) || store.get('hub.me') || (state && state.viewer) || ''; }
+const isMe = login => !!viewer() && login.toLowerCase().startsWith(nameOf(viewer()));
+function personalise(d) {
+  const v = viewer();
+  d.email = v;
+  d.runs.forEach(r => { r.mine = !!v && r.author === v; });
+  d.reviewQueue = d.requests.filter(p => p.reviewers.some(isMe));
+  d.changesRequested = d.prs.filter(p => isMe(p.author) && p.review === 'changes');
+  const me = $('fMe');
+  if (!me.dataset.filled) { d.team.forEach(e => { const o = el('option', null, personName(e)); o.value = e; me.append(o); }); me.dataset.filled = '1'; }
+  me.value = v; me.disabled = !!(d.signedIn && d.viewer);   // signed in: the hub already knows who you are
+  $('pickMe').hidden = !!v;
+}
+$('fMe').addEventListener('input', async () => {
+  store.set('hub.me', $('fMe').value); personalise(state); render();
+  await loadMyJira(true);
+  if (view === 'standup') loadStandup();
+  if (view === 'time') loadTime();
+});
+
+async function load() {
+  const first = !state;
+  try { state = await (await fetch('/api/state')).json(); }
+  catch (e) { $('meta').textContent = 'Hub is not running'; $('liveDot').classList.add('off'); return; }
+  fillSelect('fWho', state.team, personName);
+  fillSelect('fRepo', state.repos, shortRepo);
+  if (state.lastPoll) fillSelect('fBase', [...new Set(state.prs.map(p => p.base))].sort(), b => b);
+  personalise(state);
+  handleEvents(state.events);
+  render();
+  loadMyJira();
+  if (first && view === 'standup') loadStandup();   // opened straight on these pages: load once we know who is looking
+  if (first && view === 'time') loadTime();
+}
+
+function kpi(id, n, sub, level) {
+  const k = $(id); k.querySelector('.n').textContent = n; k.querySelector('.sub').textContent = sub;
+  k.classList.toggle('alert', level === 'alert'); k.classList.toggle('warn', level === 'warn');
+}
+function tag(cls, name) { const t = el('span', 'tag ' + cls); t.append(icon(name)); return t; }
+function listItem(box, lead, title, sub, right, href) {
+  const a = href ? link('', href, 'li') : el('div', 'li');
+  const mid = el('div'); mid.style.minWidth = '0'; mid.append(el('div', 't', title), el('div', 's', sub));
+  a.append(lead, mid, right instanceof Node ? right : el('span', 'r', right));
+  box.append(a);
+}
+
+function renderOverview(d, activePrs) {
+  const lastDay = r => Date.now() - new Date(r.updated) < DAY;
+  const myFails = d.runs.filter(r => r.mine && r.conclusion === 'failure' && lastDay(r));
+  const myPrs = activePrs.filter(p => isMe(p.author));
+  const noReviewer = myPrs.filter(p => p.review === 'none'), approved = myPrs.filter(p => p.review === 'approved');
+  const teamDay = d.runs.filter(lastDay), teamFailed = teamDay.filter(r => r.conclusion === 'failure').length;
+  const count = (list, key) => list.filter(p => p.review === key).length;
+  const mineSub = ['approved', 'changes', 'waiting', 'commented', 'none'].filter(k => count(myPrs, k))
+    .map(k => count(myPrs, k) + ' ' + REVIEW[k][0].toLowerCase()).join(' · ');
+  kpi('k-mine', myPrs.length, mineSub || 'none open', noReviewer.length ? 'warn' : '');
+  kpi('k-changes', d.changesRequested.length, 'on your PRs', d.changesRequested.length ? 'alert' : '');
+  kpi('k-team', teamDay.length, teamFailed ? teamFailed + ' failed' : 'none failed', teamFailed ? 'alert' : '');
+  const attnCount = myFails.length + d.reviewQueue.length + d.changesRequested.length + noReviewer.length + approved.length;
+  $('nb-attn').hidden = !attnCount; $('nb-attn').textContent = attnCount;
+
+  const attn = $('attn'); attn.textContent = '';
+  myFails.forEach(r => listItem(attn, tag('bad', 'fail'), 'Build failed · ' + shortRepo(r.repo), r.reason || r.branch, ago(r.updated), r.url));
+  approved.forEach(p => listItem(attn, tag('ok', 'check'), 'Approved · ready to merge · ' + shortRepo(p.repo) + ' #' + p.number, p.title, waited(p.created), p.url));
+  noReviewer.forEach(p => listItem(attn, tag('warn', 'user'), 'Needs a reviewer · ' + shortRepo(p.repo) + ' #' + p.number, p.title, waited(p.created), p.url));
+
+  // Team review health: where active team PRs are stuck. Each row opens Team PRs filtered to it.
+  const health = $('health'); health.textContent = '';
+  $('healthTotal').textContent = activePrs.length + ' active PRs';
+  [['approved', 'Ready to merge'], ['changes', 'Changes requested'], ['waiting', 'Awaiting review'], ['commented', 'Commented, no decision'], ['none', 'No reviewer']]
+    .forEach(([key, label]) => {
+      const b = el('button'); b.type = 'button';
+      b.append(pill(label, REVIEW[key][1]), el('span', 'cnt', count(activePrs, key)));
+      b.addEventListener('click', () => { $('fClear').click(); $('fRev').value = key; $('fRev').dispatchEvent(new Event('input')); location.hash = 'prs'; });
+      health.append(b);
+    });
+  d.reviewQueue.forEach(p => listItem(attn, tag('info', 'eye'), 'Review requested · ' + shortRepo(p.repo) + ' #' + p.number, personName(p.author) + ' · ' + p.title, ago(p.created), p.url));
+  d.changesRequested.forEach(p => listItem(attn, tag('warn', 'msg'), 'Changes requested · ' + shortRepo(p.repo) + ' #' + p.number, p.title, ago(p.created), p.url));
+  if (!attnCount) emptyBox(attn, "You're all clear", 'Nothing needs you right now.');
+
+  const recent = $('recent'); recent.textContent = '';
+  d.runs.slice(0, 6).forEach(r => listItem(recent, avatar(r.author), shortRepo(r.repo) + ' · ' + r.branch, personName(r.author) + ' · ' + r.workflow, statePill(r)));
+  if (!d.runs.length) emptyBox(recent, 'No builds yet');
+
+  // My open PRs: what needs me first (changes requested, approved and ready to merge, no reviewer, waiting).
+  const mine = $('myPrs'); mine.textContent = '';
+  const order = { changes: 0, approved: 1, none: 2, waiting: 3, commented: 4 };
+  [...myPrs].sort((a, b) => order[a.review] - order[b.review]).forEach(p => {
+    const right = el('span', 'r'); right.append(reviewPill(p));
+    const checks = checksOf(p, false); if (checks) right.append(checks);
+    listItem(mine, repoChip(p.repo), p.title, '#' + p.number + ' → ' + p.base + ' · open ' + waited(p.created).textContent, right, p.url);
+  });
+  if (!viewer()) emptyBox(mine, 'Pick your name at the top right');
+  else if (!myPrs.length) emptyBox(mine, 'No open PRs', 'Drafts and parked PRs are under Team PRs.');
+  $('myPrsAll').hidden = !myPrs.length;
+
+  // My Jira tickets: in progress first; each opens its Ticket lookup page.
+  const mj = $('myJira'), v = viewer(); mj.textContent = '';
+  $('myJiraAll').hidden = !(d.jiraOn && v);
+  if (d.jiraOn && v) $('myJiraAll').href = new URL(d.jira).origin + '/issues/?jql=' + encodeURIComponent(`assignee = "${v}" AND resolution = Unresolved ORDER BY updated DESC`);
+  if (!d.jiraOn) emptyBox(mj, 'Jira not connected', d.jiraError || 'Checking Jira…');
+  else if (!v) emptyBox(mj, 'Pick your name at the top right');
+  else {
+    const rank = { indeterminate: 0, new: 1, done: 2 }, mineJ = [...(myJiraList() || [])].sort((a, b) => (rank[a.cat] ?? 3) - (rank[b.cat] ?? 3));
+    if (!myJiraList()) emptyBox(mj, myJira.error || 'Loading your Jira tickets…');
+    mineJ.slice(0, 8).forEach(t => {
+      const open = d.prs.filter(p => keysOf(`${p.title} ${p.head}`).includes(t.key)).length;
+      const right = el('span', 'r'); right.append(pill(t.status, JIRA_CAT[t.cat] || 's-off'));
+      listItem(mj, el('span', 'chip', t.key), t.summary, `${t.type} · ${t.priority} · ${open ? open + ' open PR' + (open > 1 ? 's' : '') : 'no PR yet'}`, right);
+      const row = mj.lastChild; row.classList.add('clickable'); row.tabIndex = 0; row.setAttribute('role', 'button');
+      row.onclick = () => openTicket(t.key); row.onkeydown = e => { if (e.key === 'Enter') openTicket(t.key); };
+    });
+    if (myJiraList() && !mineJ.length) emptyBox(mj, 'No open Jira tickets assigned to you');
+    else if (mineJ.length > 8) mj.append(el('div', 'emptyst', `${mineJ.length - 8} more: Open in Jira`));
+  }
+
+  const oldest = $('oldest'); oldest.textContent = '';
+  [...activePrs].sort((a, b) => a.created.localeCompare(b.created)).slice(0, 5).forEach(p => listItem(oldest, avatar(p.author), p.title, shortRepo(p.repo) + ' #' + p.number + ' → ' + p.base, waited(p.created), p.url));
+  if (!activePrs.length) emptyBox(oldest, 'No open PRs');
+}
+
+function render() {
+  const d = state;
+  if (!d) return;
+  $('liveDot').classList.toggle('off', !!d.lastError);
+  $('meta').textContent = d.lastPoll ? 'Live · checked ' + ago(d.lastPoll) : 'Checking GitHub…';
+  $('meta2').textContent = (d.hosted ? 'Team server' : 'On this PC') + ' · ' + (d.team.length ? d.team.length + ' people' : 'everyone')
+    + (d.teamInfo && d.teamInfo.source === 'jira' ? ' (from Jira)' : '') + ' · Jira ' + (d.jiraOn ? 'on' : 'off');
+  $('err').hidden = !d.lastError; $('err').textContent = d.lastError || '';
+
+  const allActive = d.prs.filter(p => !whyParked(p));
+  renderLinks(d);
+  renderOverview(d, allActive);
+  $('nb-prs').textContent = allActive.length;
+  const failedTeam = d.runs.filter(r => r.conclusion === 'failure').length;
+  $('nb-builds').textContent = failedTeam || d.runs.length; $('nb-builds').classList.toggle('bad', failedTeam > 0);
+  $('nb-builds').title = failedTeam ? failedTeam + ' failed' : d.runs.length + ' builds';
+
+  const f = filtered(d);
+  const openPrs = f.prs.filter(p => !whyParked(p)), parked = f.prs.filter(p => whyParked(p));
+  const active = FILTERS.some(id => $(id).value.trim());
+  $('fCount').textContent = !active ? '' : view === 'builds'
+    ? f.runs.length + ' of ' + d.runs.length + ' builds' : openPrs.length + ' of ' + allActive.length + ' PRs';
+
+  const prBody = $('prRows');
+  if (!openPrs.length) emptyRow(prBody, active ? 'No PRs match these filters' : 'No open team PRs', active ? 'Try clearing a filter.' : '', 5);
+  else prBody.textContent = '';
+  for (const p of openPrs) {
+    const tr = prRow(prBody, p);
+    const rv = el('div', 'review'); rv.append(reviewPill(p));
+    if (p.reviewers.length) { const s = el('span', 'avs'); p.reviewers.forEach(r => s.append(avatar(r))); rv.append(s); }
+    cell(tr, rv, 'fit');
+    cell(tr, toggleButton(p.url, 'Hide'), 'fit');
+  }
+  $('parkedCount').textContent = parked.length;
+  const parkedBody = $('parkedRows');
+  if (!parked.length) emptyRow(parkedBody, 'Nothing parked', '', 5); else parkedBody.textContent = '';
+  for (const p of parked) {
+    const tr = prRow(parkedBody, p);
+    cell(tr, pill(whyParked(p), 's-off'), 'fit');
+    cell(tr, hiddenPrs.has(p.url) ? toggleButton(p.url, 'Unhide') : '', 'fit');
+  }
+
+  const body = $('rows');
+  if (!f.runs.length) emptyRow(body, active ? 'No builds match these filters' : 'No builds yet', active ? 'Try clearing a filter.' : '', 4);
+  else body.textContent = '';
+  for (const r of f.runs) buildRow(body, r);
+}
+
+$('fixForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const key = $('fixKey').value.trim();
+  const msg = $('fixMsg'); msg.className = 'hint'; msg.textContent = '';
+  msg.append(el('span', 'spinner'), ' Checking…');
+  $('fixOut').hidden = true;
+  let d;
+  try {
+    const res = await fetch('/api/fix?key=' + encodeURIComponent(key));
+    d = await res.json();
+    if (!res.ok) { msg.className = 'hint err-t'; msg.textContent = d.error; return; }
+  } catch (err) { msg.className = 'hint err-t'; msg.textContent = 'Hub is not running.'; return; }
+  // Builds whose branch carries the ticket key (Z10-123, z10_123 ...), from the hub's 14 days of team builds.
+  const k = d.key.toLowerCase(), builds = state ? state.runs.filter(r => r.branch.toLowerCase().replace(/[_ ]/g, '-').includes(k)) : [];
+  if (!d.rows.length && !d.pulls.length && !builds.length && !d.jira) { msg.textContent = 'Nothing found for ' + d.key + '.'; return; }
+  msg.textContent = '';
+  $('fixKeyLabel').textContent = d.jira ? `${d.key} · ${d.jira.summary}` : d.key;
+  $('fixJira').href = jiraUrl(d.key);
+  const info = $('fixInfo'); info.textContent = '';
+  if (d.jira) {
+    info.append(pill(d.jira.status, JIRA_CAT[d.jira.cat] || 's-off'), el('span', 'chip', d.jira.type), el('span', 'chip', d.jira.priority + ' priority'));
+    if (d.jira.assignee) info.append(who(d.jira.assignee));
+  } else info.append(el('span', 'muted', state && state.jiraOn ? 'Not found in Jira (or you cannot see it).' : 'Jira not connected: open it in Jira for its status.'));
+  $('fixImpact').onclick = () => { location.hash = 'impact'; $('impPr').value = d.key; $('impForm').requestSubmit(); };
+  const fb = $('fixBuilds');
+  if (!builds.length) emptyRow(fb, 'No team builds in the last 14 days', '', 4); else fb.textContent = '';
+  builds.forEach(r => buildRow(fb, r));
+  const head = $('fixHead'); head.textContent = '';
+  const hr = head.insertRow(); hr.append(el('th', null, 'Repo'));
+  d.trackBranches.forEach(b => hr.append(el('th', 'br', b)));
+  const rows = $('fixRows');
+  if (!d.rows.length) emptyRow(rows, 'Nothing merged yet', '', d.trackBranches.length + 1); else rows.textContent = '';
+  const MARKS = { true: ['yes', 'check', 'Has it'], squashed: ['yes', 'check', 'Down-merged'], false: ['no', 'x', 'Missing'], null: ['na', 'minus', 'No branch'] };
+  for (const r of d.rows) {
+    const tr = rows.insertRow(); cell(tr, repoChip(r.repo));
+    for (const b of d.trackBranches) {
+      const [cls, ic, text] = MARKS[String(r.branches[b])] || MARKS.null;
+      const m = el('span', 'mark ' + cls); m.append(icon(ic), text); cell(tr, m);
+    }
+  }
+  const prs = $('fixPrs');
+  if (!d.pulls.length) emptyRow(prs, 'No PRs yet', '', 3); else prs.textContent = '';
+  const PR_STATE = { merged: 's-ok', open: 's-run', closed: 's-off' };
+  for (const p of d.pulls) {
+    const tr = prs.insertRow();
+    cell(tr, prTitle(p)); cell(tr, who(p.author), 'fit');
+    const st = el('div', 'review'), live = p.state === 'open' && state && state.prs.find(x => x.url === p.url);
+    st.append(pill(p.state[0].toUpperCase() + p.state.slice(1), PR_STATE[p.state] || 's-off'));
+    if (live) st.append(reviewPill(live));   // open team PR: show its review status too
+    cell(tr, st, 'fit');
+  }
+  $('fixOut').hidden = false;
+});
+
+// Press / anywhere (outside a text box) to look up a ticket.
+document.addEventListener('keydown', e => {
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  e.preventDefault(); location.hash = 'fix'; show('fix'); $('fixKey').focus(); $('fixKey').select();   // show first: a hidden box can't take focus
+});
+$('myPrsAll').addEventListener('click', () => { $('fClear').click(); $('fWho').value = 'me'; $('fWho').dispatchEvent(new Event('input')); });
+
+// Tools: call a hub lookup, showing progress and errors in `msg`.
+async function tool(path, params, msg) {
+  msg.className = msg.className.replace(/\berr-t\b/, '').trim(); msg.textContent = ''; msg.append(el('span', 'spinner'), ' Working…');
+  try {
+    const res = await fetch(path + '?' + new URLSearchParams(params)), d = await res.json();
+    if (!res.ok) { msg.classList.add('err-t'); msg.textContent = d.error; return null; }
+    msg.textContent = ''; return d;
+  } catch (e) { msg.classList.add('err-t'); msg.textContent = 'Hub is not running.'; return null; }
+}
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch (e) { btn.textContent = 'Select the text to copy'; }
+  setTimeout(() => { btn.textContent = btn.dataset.label; }, 1500);
+}
+const prLine = p => `${shortRepo(p.repo)} #${p.number} ${p.title}`;
+const jiraLink = key => link(key, (state && state.jira || 'https://amla.atlassian.net/browse/') + key, 'mono');
+
+// Standup: Since <last working day> / Today / Blockers for whoever is viewing.
+async function loadStandup() {
+  const v = viewer(), text = $('suText');
+  $('suTitle').textContent = v ? personName(v) + "'s standup" : 'Standup';
+  text.textContent = '';
+  if (!state) return;   // load() calls again once the data is in
+  if (!v) { $('suMsg').textContent = 'Pick your name at the top right first.'; return; }
+  const timeReady = !(myTime && myTime.person === v) && state && state.jiraOn
+    ? fetch('/api/time?' + new URLSearchParams({ person: v })).then(r => r.ok ? r.json() : null).then(t => { if (t) myTime = t; }).catch(() => {}) : null;
+  const [d] = await Promise.all([tool('/api/standup', { person: v }, $('suMsg')), loadMyJira(), timeReady]);   // Jira feeds "Today" and time logged
+  if (!d || viewer() !== v) return;
+  const mine = state.prs.filter(p => isMe(p.author) && !whyParked(p)), L = [];
+  L.push('Since ' + new Date(d.since + 'T00:00').toLocaleDateString(undefined, { weekday: 'long' }));
+  d.authored.forEach(p => L.push(`• ${{ merged: 'Merged', closed: 'Closed' }[p.state] || 'Worked on'} ${prLine(p)}`));
+  d.reviewed.forEach(p => L.push(`• Reviewed ${prLine(p)} (${personName(p.author)})`));
+  if (d.builds.passed + d.builds.failed) L.push(`• Builds: ${d.builds.passed} passed, ${d.builds.failed} failed`);
+  const logged = myTime && myTime.person === v ? myTime.entries.filter(e => dayKey(e.started) >= d.since && dayKey(e.started) < dayKey(Date.now())) : [];
+  if (logged.length) {
+    const per = {}; logged.forEach(e => { per[e.key] = (per[e.key] || 0) + e.seconds; });
+    L.push(`• Logged ${fmtH(logged.reduce((n, e) => n + e.seconds, 0))} (${Object.entries(per).map(([k, s]) => `${k} ${fmtH(s)}`).join(', ')})`);
+  }
+  if (L.length === 1) L.push('• No PR activity on GitHub');
+  const today = [...mine.filter(p => p.review === 'changes').map(p => `• Address review comments on ${prLine(p)}`),
+    ...mine.filter(p => p.review === 'approved').map(p => `• Merge ${prLine(p)} (approved)`),
+    ...state.reviewQueue.map(p => `• Review ${prLine(p)} for ${personName(p.author)}`),
+    ...(myJiraList() || []).filter(t => t.cat === 'indeterminate').slice(0, 5)
+      .map(t => `• Continue ${t.key} ${t.summary} (${t.status})`)];
+  const blocked = mine.filter(p => p.review === 'none' || (p.review === 'waiting' && Date.now() - new Date(p.created) > 3 * DAY))
+    .map(p => `• ${prLine(p)}: ${p.review === 'none' ? 'needs a reviewer' : 'waiting for review'} (${Math.floor((Date.now() - new Date(p.created)) / DAY)}d)`);
+  L.push('', 'Today', ...(today.length ? today : ['• ']), '', 'Blockers', ...(blocked.length ? blocked : ['• None']));
+  text.textContent = L.join('\n');
+}
+$('suRefresh').addEventListener('click', loadStandup);
+$('suCopy').addEventListener('click', e => copyText($('suText').textContent, e.currentTarget));
+
+// Time: what the viewer logged in Jira (last 14 days) and estimate vs logged on their open tickets.
+const fmtH = sec => { const m = Math.round((sec || 0) / 60), h = Math.floor(m / 60); return h && m % 60 ? `${h}h ${m % 60}m` : h ? `${h}h` : `${m % 60}m`; };
+const dayKey = d => new Date(d).toLocaleDateString('en-CA');
+const weekStart = (offset = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7); return d; };   // Monday
+let myTime = null, timeText = '';
+async function loadTime(refresh) {
+  const v = viewer();
+  $('tmTitle').textContent = v ? personName(v) + "'s time" : 'Time';
+  if (!state) return;   // load() calls again once the data is in
+  if (!v) { $('tmMsg').textContent = 'Pick your name at the top right first.'; $('tmOut').hidden = true; return; }
+  if (!refresh && myTime && myTime.person === v && $('tmOut').hidden === false) return;
+  const d = await tool('/api/time', refresh ? { person: v, refresh: 1 } : { person: v }, $('tmMsg'));
+  if (!d || viewer() !== v) return;
+  myTime = d;
+  renderTime(d);
+  // Ask for a Jira API token (PC only) when: busy shared tickets have more than 20 logs (acli only returns the oldest 20),
+  // the saved token stopped working, or there is no token yet and you're looking at your own time (needed to log time).
+  const msg = $('tmMsg'); msg.textContent = '';
+  if (!state.hosted && (d.partial.length || state.jiraNeedsToken || (!state.canLogTime && v === state.viewer))) {
+    const box = el('div', 'err pick');
+    if (state.jiraNeedsToken) box.append(el('b', null, 'Your Jira token stopped working'));
+    box.style.display = 'grid'; box.style.gap = '6px'; box.style.marginTop = '10px';
+    // Busy shared tickets need the Jira API (acli returns only 20 logs): just ask for the token.
+    const form = el('form', 'row'), tokenIn = el('input'), go = el('button', 'btn primary', 'Connect'), note = el('span', 'muted');
+    tokenIn.type = 'password'; tokenIn.placeholder = 'Paste your Jira API token'; tokenIn.autocomplete = 'off'; tokenIn.setAttribute('aria-label', 'Jira API token');
+    tokenIn.style.cssText = 'flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);font:500 13.5px var(--mono)';
+    go.type = 'submit';
+    form.append(tokenIn, go, link('Get a token', 'https://id.atlassian.com/manage-profile/security/api-tokens'));
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault(); go.disabled = true; note.textContent = 'Checking with Jira…';
+      try {
+        const res = await fetch('/api/jira-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
+          body: JSON.stringify({ email: viewer(), token: tokenIn.value }) });
+        const r = await res.json();
+        tokenIn.value = '';
+        if (!res.ok) { note.textContent = r.error; go.disabled = false; return; }
+        note.textContent = `Connected as ${r.name}. Counting every log…`;
+        await load(); await loadMyJira(true); await loadTime(true);
+      } catch (e) { note.textContent = 'Hub is not running.'; go.disabled = false; }
+    });
+    box.append(form, note);
+    msg.append(box);
+  }
+}
+function renderTime(d) {
+  const mon = weekStart(), lastMon = weekStart(-1), today = dayKey(Date.now());
+  const sum = list => list.reduce((n, e) => n + e.seconds, 0);
+  const thisWeek = d.entries.filter(e => new Date(e.started) >= mon), lastWeek = d.entries.filter(e => new Date(e.started) >= lastMon && new Date(e.started) < mon);
+  const todaySec = sum(d.entries.filter(e => dayKey(e.started) === today)), weekSec = sum(thisWeek), target = d.weekHours * 3600;
+  const over = d.tickets.filter(t => t.estimate && t.spent > t.estimate);
+  kpi('k-today', fmtH(todaySec), todaySec ? `${d.entries.filter(e => dayKey(e.started) === today).length} log(s)` : 'nothing logged yet', todaySec ? '' : 'warn');
+  kpi('k-week', fmtH(weekSec), `of ${d.weekHours}h (${Math.round(weekSec / target * 100)}%)`, '');
+  kpi('k-last', fmtH(sum(lastWeek)), `of ${d.weekHours}h`, '');
+  kpi('k-over', over.length, 'open tickets', over.length ? 'alert' : '');
+  // Day by day, Monday to Friday (a weekend day only shows if time was logged on it)
+  const week = $('tmWeek'); week.textContent = '';
+  const loggedOn = x => sum(thisWeek.filter(e => dayKey(e.started) === dayKey(x)));
+  const days = [...Array(7)].map((_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return x; }).filter((x, i) => i < 5 || loggedOn(x));
+  const perDay = days.map(loggedOn);
+  const scale = Math.max(8 * 3600, ...perDay);
+  days.forEach((x, i) => {
+    const row = el('div', 'day' + (dayKey(x) === today ? ' today' : '')), bar = el('div', 'bar'), fill = el('i');
+    fill.style.width = (perDay[i] / scale * 100) + '%'; bar.append(fill);
+    row.append(el('span', null, x.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })), bar, el('span', 'h', perDay[i] ? fmtH(perDay[i]) : '–'));
+    week.append(row);
+  });
+  $('tmWeekTotal').textContent = `${fmtH(weekSec)} of ${d.weekHours}h`;
+  // Estimate vs logged: over estimate first, then in progress
+  const body = $('tmTickets'), rank = t => (t.estimate && t.spent > t.estimate ? 0 : t.cat === 'indeterminate' ? 1 : 2);
+  if (!d.tickets.length) emptyRow(body, 'No open tickets assigned to you', '', 6); else body.textContent = '';
+  [...d.tickets].sort((a, b) => rank(a) - rank(b)).forEach(t => {
+    const tr = body.insertRow(), name = el('div', 'pr-t'), diff = (t.estimate || 0) - (t.spent || 0);
+    name.append(link(t.key + ' · ' + t.summary, jiraUrl(t.key)));
+    if (state.canLogTime && state.canLogTime === d.person) {   // "Log" fills the form for this ticket
+      const b = el('button', 'btn sm', 'Log'); b.type = 'button'; b.style.marginTop = '4px';
+      b.onclick = () => { $('tmKey').value = t.key; $('tmLogPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('tmHours').focus(); };
+      name.append(el('div'), b);
+    }
+    cell(tr, name); cell(tr, pill(t.status, JIRA_CAT[t.cat] || 's-off'), 'fit');
+    cell(tr, t.estimate ? fmtH(t.estimate) : '—', 'fit'); cell(tr, t.spent ? fmtH(t.spent) : '—', 'fit');
+    cell(tr, t.remaining == null ? '—' : fmtH(t.remaining), 'fit');
+    cell(tr, !t.estimate ? el('span', 'muted', 'No estimate') : diff < 0 ? el('span', 'over', fmtH(-diff) + ' over') : el('span', 'left', fmtH(diff) + ' left'), 'fit');
+  });
+  // Log time: only for the person whose Jira token this PC has
+  const canLog = !!state.canLogTime && state.canLogTime === d.person;
+  $('tmLogPanel').hidden = !canLog;
+  if (canLog) {
+    $('tmLogWho').textContent = 'as ' + personName(d.person);
+    const sel = $('tmKey'), keep = sel.value, opts = [...d.tickets].sort((a, b) => rank(a) - rank(b)).map(t => [t.key, t.summary]);
+    d.entries.forEach(e => { if (!opts.some(o => o[0] === e.key)) opts.push([e.key, e.summary]); });   // recently logged, e.g. Meeting
+    sel.textContent = '';
+    opts.forEach(([k, s]) => { const o = el('option', null, `${k} · ${s}`.slice(0, 80)); o.value = k; sel.append(o); });
+    if (keep) sel.value = keep;
+    $('tmDate').max = today; if (!$('tmDate').value) $('tmDate').value = today;
+  }
+  // Recent logs
+  const logs = $('tmLogs'); logs.textContent = '';
+  d.entries.slice(0, 30).forEach(e => listItem(logs, el('span', 'chip', new Date(e.started).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })),
+    e.key + ' · ' + e.summary, e.comment || 'No comment', el('span', 'r', fmtH(e.seconds)), jiraUrl(e.key)));
+  if (!d.entries.length) emptyBox(logs, 'No time logged in the last 14 days');
+  // Timesheet text: this week per ticket
+  const perTicket = {}; thisWeek.forEach(e => { perTicket[e.key] = perTicket[e.key] || { summary: e.summary, sec: 0 }; perTicket[e.key].sec += e.seconds; });
+  timeText = `Timesheet ${mon.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}–${days[days.length - 1].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: ${fmtH(weekSec)}\n\n`
+    + Object.entries(perTicket).sort((a, b) => b[1].sec - a[1].sec).map(([k, x]) => `• ${k} ${x.summary}: ${fmtH(x.sec)}`).join('\n');
+  $('tmOut').hidden = false;
+}
+$('tmRefresh').addEventListener('click', () => loadTime(true));
+$('tmLogForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('tmLogMsg'), btn = e.submitter; msg.textContent = 'Logging…'; if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/worklog', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
+      body: JSON.stringify({ key: $('tmKey').value, time: $('tmHours').value, date: $('tmDate').value, comment: $('tmComment').value }) });
+    const r = await res.json();
+    if (!res.ok) { msg.textContent = r.error; return; }
+    msg.textContent = `Logged ${fmtH(r.seconds)} on ${r.key}`;
+    $('tmHours').value = ''; $('tmComment').value = '';
+    await loadTime(true);
+  } catch (err) { msg.textContent = 'Hub is not running.'; } finally { if (btn) btn.disabled = false; }
+});
+$('tmCopy').addEventListener('click', e => copyText(timeText, e.currentTarget));
+
+// Release notes
+let relText = '';
+$('relForm').addEventListener('submit', async e => {
+  e.preventDefault(); $('relOut').hidden = true;
+  const d = await tool('/api/release', { from: $('relFrom').value.trim(), to: $('relTo').value.trim() }, $('relMsg'));
+  if (!d) return;
+  $('relMsg').textContent = [d.missing.length && 'Not found in ' + d.missing.map(shortRepo).join(', '),
+    d.truncated.length && 'Over 250 commits, list may be incomplete: ' + d.truncated.map(shortRepo).join(', ')].filter(Boolean).join(' · ');
+  $('relTitle').textContent = d.tickets.length + ' tickets · ' + d.from + ' → ' + d.to;
+  const body = $('relRows');
+  if (!d.tickets.length) emptyRow(body, 'No tickets found', 'No commits between these refs mention a ticket key.', 4); else body.textContent = '';
+  d.tickets.forEach(t => { if (t.jira && t.jira.summary) t.title = t.jira.summary; });   // Jira's summary reads better than a commit line
+  d.tickets.forEach(t => {
+    const tr = body.insertRow(), repos = el('span', 'row');
+    t.repos.forEach(r => repos.append(repoChip(r)));
+    cell(tr, jiraLink(t.key), 'fit'); cell(tr, t.title || '—');
+    cell(tr, t.jira ? pill(t.jira.status, JIRA_CAT[t.jira.cat] || 's-off') : el('span', 'muted', '—'), 'fit'); cell(tr, repos, 'fit');
+  });
+  relText = `Release notes: ${d.from} → ${d.to}\n\n` + d.tickets.map(t =>
+    `• ${t.key}: ${t.title || '(no title)'}${t.jira ? ` (${t.jira.status})` : ''} [${t.repos.map(shortRepo).join(', ')}]`).join('\n');
+  $('relOut').hidden = false;
+});
+$('relCopy').addEventListener('click', e => copyText(relText, e.currentTarget));
+
+// Impact check: a verdict, a checklist of every kind of change, then one row per change with its risk and reason.
+// Usages in other repos are searched 8 at a time ("Check next 8").
+let imp = null;   // { input, prs, total, findings, stats }
+const otherUses = n => (n.usages || []).filter(u => u.repo !== n.repo);
+const RISK = { high: ['High', 's-bad'], medium: ['Medium', 's-warn'], low: ['Low', 's-off'] };
+const CATEGORIES = [['Database procedure', 'database procedures'], ['Database column', 'database columns'], ['Database object', 'tables, views or functions'],
+  ['API route', 'API routes'], ['C# data model', 'C# data models'], ['Interface method', 'interface methods'], ['Exported code', 'exported frontend code'],
+  ['Config setting', 'config settings'], ['Text resource', 'text resources'], ['Deleted or renamed file', 'deleted or renamed files']];
+async function checkImpact(from) {
+  const d = await tool('/api/impact', { pr: imp.input, from }, $('impMsg'));
+  if (!d) return;
+  if (!d.prs.length) { $('impMsg').textContent = 'No open PRs for that ticket.'; return; }
+  if (!imp.findings) Object.assign(imp, { prs: d.prs, total: d.total, stats: d.stats, findings: d.findings });
+  else d.findings.slice(d.from, d.checkedTo).forEach(x => {   // later batches: take the usages just checked
+    const mine = imp.findings.find(n => n.kind === x.kind && n.name === x.name); if (mine) mine.usages = x.usages;
+  });
+  renderImpact();
+}
+function renderImpact() {
+  const { findings, total, prs, stats } = imp;
+  const used = findings.filter(n => otherUses(n).length), flagged = findings.filter(n => n.risk === 'high' && !otherUses(n).length);
+  const unchecked = findings.filter(n => n.usages == null), blocked = findings.filter(n => n.usages === null);
+  const v = $('impVerdict'), prText = prs.map(p => shortRepo(p.split('#')[0]) + ' #' + p.split('#')[1]).join(', '), s = n => n === 1 ? '' : 's';
+  v.textContent = '';
+  // The checklist: one line per kind of change, then tests.
+  const list = el('ul', 'checks'), line = (ok, text) => { const li = el('li'); li.append(icon(ok === true ? 'check' : ok === false ? 'x' : 'minus'), el('span', null, text)); list.append(li); };
+  CATEGORIES.forEach(([kind, label]) => {
+    const of = findings.filter(n => n.kind === kind);
+    if (!of.length) return line(true, `No ${label} affected`);
+    const bad = of.filter(n => otherUses(n).length || n.risk === 'high');
+    line(bad.length ? false : null, bad.length ? `${of.length} ${label}: ${bad[0].why}` : `${of.length} ${label} changed: ${of.some(n => n.usages == null) ? 'still checking other repos' : 'not used by another repo'}`);
+  });
+  line(stats.tests ? true : null, stats.tests ? `${stats.tests} test file${s(stats.tests)} changed` : 'No test files changed in this PR');
+  const scope = el('span', 'scope', `${prText} · ${stats.files} file${s(stats.files)} · +${stats.additions} −${stats.deletions}. Reads the diff and searches the other Znode repos. It does not run tests or review the logic.`);
+  if (used.length) { v.className = 'verdict bad'; v.append(el('b', null, `${used.length} change${s(used.length)} may break another repo`), el('span', null, 'Before merging, test or update the code listed under "Yes" below.')); }
+  else if (flagged.length) { v.className = 'verdict bad'; v.append(el('b', null, `${flagged.length} risky change${s(flagged.length)} to review`), el('span', null, 'Each one below says why it can break callers. Check them before merging.')); }
+  else if (blocked.length) { v.className = 'verdict wait'; v.append(el('b', null, 'Not finished'), el('span', null, `${blocked.length} item${s(blocked.length)} couldn't be checked yet (GitHub allows a few searches a minute). Try again in a minute.`)); }
+  else if (unchecked.length) { v.className = 'verdict ok'; v.append(el('b', null, 'No problems so far'), el('span', null, `Checked ${total - unchecked.length} of ${total}. Check the rest below to finish.`)); }
+  else { v.className = 'verdict ok'; v.append(el('b', null, 'All checks passed. Nothing will break in other repos')); }
+  v.append(list, scope);
+
+  $('impCount').textContent = total ? `${total - unchecked.length} of ${total} checked` : '';
+  const body = $('impRows');
+  if (!findings.length) emptyRow(body, 'Nothing risky in this PR', 'No database, API, model, interface, export, config, text or file changes that other code depends on.', 4); else body.textContent = '';
+  [...used, ...findings.filter(n => !used.includes(n))].forEach(n => {
+    const tr = body.insertRow(), uses = el('div', 'uses'), item = el('div'), risk = el('div', 'uses');
+    item.append(el('b', 'mono', n.name), el('div', 'muted', shortRepo(n.repo) + ' · ' + n.file.split('/').pop()));
+    risk.append(pill(...RISK[n.risk]), el('span', 'muted', n.why));
+    cell(tr, item); cell(tr, n.kind, 'fit muted'); cell(tr, risk);
+    if (n.usages === undefined) uses.append(pill('Not checked yet', 's-off'));
+    else if (n.usages === null) uses.append(pill('Search limit: retry', 's-off'));
+    else if (!otherUses(n).length) uses.append(pill('No', 's-ok'));
+    else {
+      uses.append(pill('Yes', 's-bad'));
+      otherUses(n).forEach(u => { const a = link('', u.url); a.append(repoChip(u.repo), el('span', null, u.path.split('/').pop())); a.title = u.path; uses.append(a); });
+    }
+    cell(tr, uses, 'fit');
+  });
+  $('impMoreRow').hidden = !unchecked.length;
+  $('impMore').textContent = `Check next ${Math.min(8, unchecked.length)} (${unchecked.length} left)`;
+  $('impOut').hidden = false;
+}
+$('impForm').addEventListener('submit', e => {
+  e.preventDefault(); $('impOut').hidden = true;
+  imp = { input: $('impPr').value.trim() };
+  checkImpact(0);
+});
+$('impMore').addEventListener('click', () => checkImpact(imp.findings.findIndex(n => n.usages == null)));
+
+FILTERS.forEach(id => {
+  if (FIXED.includes(id)) { try { $(id).value = localStorage.getItem('hub.' + id) || ''; } catch (e) {} }
+  $(id).addEventListener('input', () => { try { localStorage.setItem('hub.' + id, $(id).value); } catch (e) {} render(); });
+});
+$('fClear').addEventListener('click', () => {
+  FILTERS.forEach(id => { $(id).value = ''; try { localStorage.removeItem('hub.' + id); } catch (e) {} });
+  render();
+});
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+let startView = location.hash.slice(1);
+if (!startView) { try { startView = localStorage.getItem('hub.view') || ''; } catch (e) {} }
+show(startView);
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>
