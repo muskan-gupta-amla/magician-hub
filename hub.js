@@ -803,11 +803,11 @@ async function poll() {
     await pollPrs();
     if (JIRA_MODE && Date.now() - lastJira > (cfg.jiraPollSeconds || 300) * 1000) await pollJira();   // own errors; never stops GitHub
     // Keep the page list short and recent.
+    // Builds loaded before the team list arrived (first run): keep only the team's, before the 500 limit below.
+    if (team.size) for (const r of runs.values()) if (!team.has(r.author) && !(r.author = runAuthor(r.raw))) runs.delete(r.id);
     const cutoff = buildSince();
     [...runs.values()].sort((a, b) => b.updated.localeCompare(a.updated))
-      .filter((r, i) => i >= 500 || r.updated < cutoff).forEach(r => runs.delete(r.id));
-    // Builds loaded before the team list arrived (first run): keep only the team's.
-    if (team.size) for (const r of runs.values()) if (!team.has(r.author) && !(r.author = runAuthor(r.raw))) runs.delete(r.id);
+      .filter((r, i) => (team.size && i >= 500) || r.updated < cutoff).forEach(r => runs.delete(r.id));   // no limit until the team is known
     seeded = true;
     lastError = null;
   } catch (e) {
