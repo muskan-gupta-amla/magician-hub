@@ -69,6 +69,12 @@ globalThis.fetch = async (url, opts) => {
       issue('Z10-7', 'Fixed earlier', 'Done', 'done', 'asha.rao@amla.io')];
     if (jql.startsWith('assignee = currentUser()')) return reply({ issues: [] });
     if (jql.startsWith('cf[10117] = "Magicians"')) return reply({ issues: teamAnswer.map((a, i) => issue(`Z10-${900 + i}`, 'Team ticket', 'Done', 'done', a)) });
+    if (jql.includes('sprint in openSprints()')) {   // the Daily Scrum's sprint card
+      const sprint = { id: 20, name: 'Magicians Sprint 20', state: 'active', startDate: '2026-10-05T00:00:00Z', endDate: '2026-10-26T00:00:00Z', goal: '' };
+      return reply({ issues: [['Z10-2', 'indeterminate'], ['Z10-7', 'done'], ['Z10-50', 'new']].map(([key, cat]) =>
+        ({ key, fields: { ...all.find(i => i.key === key).fields, status: { name: cat, statusCategory: { key: cat } }, customfield_10010: [sprint, { id: 19, state: 'closed' }] } })) });
+    }
+    if (jql.includes('statusCategoryChangedDate')) return reply({ issues: all.filter(i => i.key === 'Z10-2') });
     if (jql.startsWith('worklogAuthor = "asha.rao@amla.io"')) return reply({ issues: all.filter(i => ['Z10-2', 'Z10-7'].includes(i.key)) });
     if (new URL(url).searchParams.get('fields').includes('timetracking')) {
       const ago = days => new Date(Date.now() - days * 864e5).toISOString(), log = (who, days, seconds, text) =>
@@ -161,7 +167,9 @@ test('standup: PRs authored and reviewed since the last working day, plus builds
   assert.equal(status, 200);
   assert.deepEqual(body.authored.map(p => `${p.number} ${p.state}`), ['2 open', '5 merged']);
   assert.deepEqual(body.reviewed.map(p => p.number), [3]);
-  assert.deepEqual(body.builds, { passed: 0, failed: 0 });
+  assert.deepEqual(body.builds, { passed: 0, failed: 0, failedList: [] });
+  assert.deepEqual(body.moved.map(t => `${t.key} ${t.status}`), ['Z10-2 In Progress']);   // moved since the last working day
+  assert.deepEqual(body.sprints.map(s => [s.name, s.done, s.doing, s.todo, s.tickets.length]), [['Magicians Sprint 20', 1, 1, 1, 3]]);
   assert.equal((await api('/api/standup', { person: 'stranger@example.com' })).status, 400);
 });
 

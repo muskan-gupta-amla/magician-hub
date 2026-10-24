@@ -303,6 +303,29 @@
   .legend i { width:10px; height:10px; border-radius:3px; }
   .legend b { font-weight:700; color:var(--fg); }
 
+  /* Daily Scrum: sprint cards, then Yesterday / Today / Blockers columns */
+  .sprints { display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:14px; }
+  .sprint { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; box-shadow:var(--shadow); display:grid; gap:10px; }
+  .sprint .top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .sprint .top b { font-size:14.5px; line-height:1.3; }
+  .sprint .dates { font-size:12px; color:var(--muted); }
+  .sprint .big { font-size:26px; font-weight:800; letter-spacing:-.02em; line-height:1; }
+  .sprint .big small { font-size:12.5px; font-weight:600; color:var(--muted); letter-spacing:0; margin-left:4px; }
+  .stackbar { display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--panel-2); gap:2px; }
+  .stackbar i { display:block; height:100%; }
+  .stackbar .d { background:var(--ok); } .stackbar .p { background:var(--brand); } .stackbar .o { background:var(--line); }
+  .timebar { height:4px; border-radius:99px; background:var(--panel-2); overflow:hidden; }
+  .timebar i { display:block; height:100%; background:var(--muted); opacity:.6; }
+  .sprint .keys { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--fg-2); }
+  .sprint .keys span { display:inline-flex; align-items:center; gap:5px; }
+  .sprint .keys i { width:8px; height:8px; border-radius:2px; }
+  .scrum3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
+  .scrum3 .col { border-top:3px solid var(--line); }
+  .scrum3 .col.y { border-top-color:var(--ok); } .scrum3 .col.t { border-top-color:var(--brand); } .scrum3 .col.b { border-top-color:var(--warn); }
+  .scrum3 .li .t { white-space:normal; }
+  .tag.brand { background:var(--brand-bg); color:var(--brand); }
+  @media (max-width:1100px) { .scrum3 { grid-template-columns:1fr; } }
+
   /* Log time: the chosen ticket's estimate, and the result of a log */
   .tkinfo { flex:1 0 100%; order:5; display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; font-size:12.5px; color:var(--fg-2); min-height:0; }
   .tkinfo:empty { display:none; }
@@ -350,8 +373,8 @@
     <nav class="nav" aria-label="Sections">
       <div class="nav-label">My day</div>
       <a href="#overview" data-go="overview"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview<span class="badge bad" id="nb-attn" hidden></span></a>
-      <a href="#standup" data-go="standup"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Standup</a>
-      <a href="#time" data-go="time"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Time</a>
+      <a href="#standup" data-go="standup"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>Daily Scrum</a>
+      <a href="#time" data-go="time"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Time Log</a>
       <div class="nav-label">Team</div>
       <a href="#prs" data-go="prs"><svg class="i" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>Team PRs<span class="badge" id="nb-prs"></span></a>
       <a href="#builds" data-go="builds"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Builds<span class="badge" id="nb-builds"></span></a>
@@ -511,10 +534,23 @@
     <!-- Standup -->
     <section data-view="standup" class="stack" hidden>
       <div class="panel">
-        <div class="panel-h"><h2 id="suTitle">Standup</h2>
-          <div class="row"><button class="btn" id="suRefresh" type="button">Refresh</button><button class="btn primary" id="suCopy" type="button" data-label="Copy">Copy</button></div></div>
+        <div class="panel-h"><h2 id="suTitle">Daily Scrum</h2>
+          <div class="row"><button class="btn" id="suRefresh" type="button">Refresh</button><button class="btn primary" id="suCopy" type="button" data-label="Copy for Teams">Copy for Teams</button></div></div>
         <div class="hint pad" id="suMsg"></div>
-        <pre class="draft" id="suText"></pre>
+      </div>
+      <div id="suOut" class="stack" hidden>
+        <div class="sprints" id="suSprints"></div>
+        <div class="kpis four">
+          <div class="kpi" id="su-prs"><div class="top">PRs worked on</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="su-rev"><div class="top">Reviews done</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="su-hrs"><div class="top">Hours logged</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="su-bld"><div class="top">Builds</div><div class="n">–</div><div class="sub"></div></div>
+        </div>
+        <div class="scrum3">
+          <div class="panel col y"><div class="panel-h"><h2>Yesterday</h2><span class="muted" id="suSince"></span></div><div id="suY"></div></div>
+          <div class="panel col t"><div class="panel-h"><h2>Today</h2><span class="muted" id="suTn"></span></div><div id="suT"></div></div>
+          <div class="panel col b"><div class="panel-h"><h2>Blockers</h2><span class="muted" id="suBn"></span></div><div id="suB"></div></div>
+        </div>
       </div>
     </section>
 
@@ -638,7 +674,11 @@ const ICONS = {
   fail: 'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20M15 9l-6 6M9 9l6 6',
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6',
   msg: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z',
-  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8'
+  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8',
+  merge: 'M18 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6M6 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6M6 21V9a9 9 0 0 0 9 9',
+  pr: 'M18 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6M6 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6M13 6h3a2 2 0 0 1 2 2v7M6 9v12',
+  arrow: 'M5 12h14M12 5l7 7-7 7', clock: 'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20M12 6v6l4 2',
+  alert: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z'
 };
 function icon(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('class', 'i');
@@ -682,8 +722,8 @@ const VIEWS = {
   fix: ['Ticket lookup', 'PRs, builds and branches for one ticket'],
   prs: ['Team PRs', 'Open pull requests'],
   builds: ['Builds', 'GitHub Actions runs'],
-  standup: ['Standup', 'Your update, drafted from GitHub and Jira'],
-  time: ['Time', 'What you logged in Jira, and what is left'],
+  standup: ['Daily Scrum', 'Yesterday, today and blockers, from GitHub and Jira'],
+  time: ['Time Log', 'Log time in Jira, and see what is left today'],
   release: ['Release notes', 'Tickets between two tags or branches'],
   impact: ['Impact check', 'Will a PR break another repo?']
 };
@@ -925,6 +965,7 @@ function kpi(id, n, sub, level) {
 function tag(cls, name) { const t = el('span', 'tag ' + cls); t.append(icon(name)); return t; }
 function listItem(box, lead, title, sub, right, href) {
   const a = href ? link('', href, 'li') : el('div', 'li');
+  if (href && href[0] === '#') a.removeAttribute('target');   // a page of the hub: stay in this tab
   const mid = el('div'); mid.style.minWidth = '0'; mid.append(el('div', 't', title), el('div', 's', sub));
   a.append(lead, mid, right instanceof Node ? right : el('span', 'r', right));
   box.append(a);
@@ -1132,40 +1173,92 @@ async function copyText(text, btn) {
 const prLine = p => `${shortRepo(p.repo)} #${p.number} ${p.title}`;
 const jiraLink = key => link(key, (state && state.jira || 'https://amla.atlassian.net/browse/') + key, 'mono');
 
-// Standup: Since <last working day> / Today / Blockers for whoever is viewing.
+// Daily Scrum: sprint progress, then Yesterday / Today / Blockers for whoever is viewing, plus a text version to paste in Teams.
+let scrumText = '';
 async function loadStandup() {
-  const v = viewer(), text = $('suText');
-  $('suTitle').textContent = v ? personName(v) + "'s standup" : 'Standup';
-  text.textContent = '';
+  const v = viewer();
+  $('suTitle').textContent = v ? personName(v) + "'s daily scrum" : 'Daily Scrum';
   if (!state) return;   // load() calls again once the data is in
-  if (!v) { $('suMsg').textContent = 'Pick your name at the top right first.'; return; }
+  if (!v) { $('suMsg').textContent = 'Pick your name at the top right first.'; $('suOut').hidden = true; return; }
   const timeReady = !(myTime && myTime.person === v) && state && state.jiraOn
     ? fetch('/api/time?' + new URLSearchParams({ person: v })).then(r => r.ok ? r.json() : null).then(t => { if (t) myTime = t; }).catch(() => {}) : null;
   const [d] = await Promise.all([tool('/api/standup', { person: v }, $('suMsg')), loadMyJira(), timeReady]);   // Jira feeds "Today" and time logged
   if (!d || viewer() !== v) return;
-  const mine = state.prs.filter(p => isMe(p.author) && !whyParked(p)), L = [];
-  L.push('Since ' + new Date(d.since + 'T00:00').toLocaleDateString(undefined, { weekday: 'long' }));
-  d.authored.forEach(p => L.push(`• ${{ merged: 'Merged', closed: 'Closed' }[p.state] || 'Worked on'} ${prLine(p)}`));
-  d.reviewed.forEach(p => L.push(`• Reviewed ${prLine(p)} (${personName(p.author)})`));
-  if (d.builds.passed + d.builds.failed) L.push(`• Builds: ${d.builds.passed} passed, ${d.builds.failed} failed`);
+  const mine = state.prs.filter(p => isMe(p.author) && !whyParked(p)), Y = [], T = [], B = [];
+  const pr = p => `${shortRepo(p.repo)} #${p.number}`, age = p => Math.floor((Date.now() - new Date(p.created)) / DAY);
+  // Yesterday
+  d.authored.forEach(p => {
+    const verb = { merged: 'Merged', closed: 'Closed' }[p.state] || 'Worked on';
+    Y.push({ icon: p.state === 'merged' ? 'merge' : 'pr', cls: p.state === 'merged' ? 'ok' : 'info', title: `${verb} ${pr(p)}`, sub: p.title, url: p.url, text: `${verb} ${prLine(p)}` });
+  });
+  d.reviewed.forEach(p => Y.push({ icon: 'eye', cls: 'info', title: `Reviewed ${pr(p)}`, sub: `${personName(p.author)} · ${p.title}`, url: p.url, text: `Reviewed ${prLine(p)} (${personName(p.author)})` }));
+  (d.moved || []).forEach(t => Y.push({ icon: 'arrow', cls: t.cat === 'done' ? 'ok' : 'brand', title: `${t.key} → ${t.status}`, sub: t.summary, url: jiraUrl(t.key), text: `Moved ${t.key} ${t.summary} to ${t.status}` }));
   const logged = myTime && myTime.person === v ? myTime.entries.filter(e => dayKey(e.started) >= d.since && dayKey(e.started) < dayKey(Date.now())) : [];
-  if (logged.length) {
-    const per = {}; logged.forEach(e => { per[e.key] = (per[e.key] || 0) + e.seconds; });
-    L.push(`• Logged ${fmtH(logged.reduce((n, e) => n + e.seconds, 0))} (${Object.entries(per).map(([k, s]) => `${k} ${fmtH(s)}`).join(', ')})`);
-  }
-  if (L.length === 1) L.push('• No PR activity on GitHub');
-  const today = [...mine.filter(p => p.review === 'changes').map(p => `• Address review comments on ${prLine(p)}`),
-    ...mine.filter(p => p.review === 'approved').map(p => `• Merge ${prLine(p)} (approved)`),
-    ...state.reviewQueue.map(p => `• Review ${prLine(p)} for ${personName(p.author)}`),
-    ...(myJiraList() || []).filter(t => t.cat === 'indeterminate').slice(0, 5)
-      .map(t => `• Continue ${t.key} ${t.summary} (${t.status})`)];
-  const blocked = mine.filter(p => p.review === 'none' || (p.review === 'waiting' && Date.now() - new Date(p.created) > 3 * DAY))
-    .map(p => `• ${prLine(p)}: ${p.review === 'none' ? 'needs a reviewer' : 'waiting for review'} (${Math.floor((Date.now() - new Date(p.created)) / DAY)}d)`);
-  L.push('', 'Today', ...(today.length ? today : ['• ']), '', 'Blockers', ...(blocked.length ? blocked : ['• None']));
-  text.textContent = L.join('\n');
+  const loggedSec = logged.reduce((n, e) => n + e.seconds, 0), per = {};
+  logged.forEach(e => { per[e.key] = (per[e.key] || 0) + e.seconds; });
+  const perText = sep => Object.entries(per).map(([k, sec]) => `${k} ${fmtH(sec)}`).join(sep);
+  if (loggedSec) Y.push({ icon: 'clock', cls: 'brand', title: `Logged ${fmtH(loggedSec)}`, sub: perText(' · '), url: '#time', text: `Logged ${fmtH(loggedSec)} (${perText(', ')})` });
+  // Today
+  mine.filter(p => p.review === 'changes').forEach(p => T.push({ icon: 'msg', cls: 'bad', title: `Address review comments on ${pr(p)}`, sub: p.title, url: p.url, text: `Address review comments on ${prLine(p)}` }));
+  mine.filter(p => p.review === 'approved').forEach(p => T.push({ icon: 'merge', cls: 'ok', title: `Merge ${pr(p)}`, sub: 'Approved · ' + p.title, url: p.url, text: `Merge ${prLine(p)} (approved)` }));
+  state.reviewQueue.forEach(p => T.push({ icon: 'eye', cls: 'info', title: `Review ${pr(p)} for ${personName(p.author)}`, sub: p.title, url: p.url, text: `Review ${prLine(p)} for ${personName(p.author)}` }));
+  (myJiraList() || []).filter(t => t.cat === 'indeterminate').slice(0, 5).forEach(t =>
+    T.push({ icon: 'arrow', cls: 'brand', title: `Continue ${t.key}`, sub: `${t.summary} · ${t.status}`, url: jiraUrl(t.key), text: `Continue ${t.key} ${t.summary} (${t.status})` }));
+  // Blockers
+  mine.filter(p => p.review === 'none' || (p.review === 'waiting' && age(p) > 3)).forEach(p => {
+    const why = p.review === 'none' ? 'Needs a reviewer' : 'Waiting for review';
+    B.push({ icon: 'alert', cls: 'warn', title: `${why}: ${pr(p)}`, sub: `${age(p)}d open · ${p.title}`, url: p.url, text: `${prLine(p)}: ${why.toLowerCase()} (${age(p)}d)` });
+  });
+  (d.builds.failedList || []).forEach(r => B.push({ icon: 'fail', cls: 'bad', title: `Build failing: ${shortRepo(r.repo)}`, sub: `${r.branch}${r.reason ? ' · ' + r.reason : ''}`, url: r.url, text: `Build failing on ${shortRepo(r.repo)} ${r.branch}` }));
+  (d.sprints || []).forEach(sp => {
+    const left = Math.ceil((new Date(sp.end) - Date.now()) / DAY), open = sp.doing + sp.todo;
+    if (left <= 2 && open) B.push({ icon: 'clock', cls: 'warn', title: `${sp.name} ends ${left <= 0 ? 'today' : `in ${left} day${left > 1 ? 's' : ''}`}`,
+      sub: `${open} of your tickets still open`, url: null, text: `${sp.name} ends in ${Math.max(0, left)}d with ${open} of my tickets open` });
+  });
+  // Sprint cards: your tickets done / in progress / to do, and how much of the sprint has passed
+  const sprints = $('suSprints'); sprints.textContent = '';
+  (d.sprints || []).forEach(sp => {
+    const total = sp.done + sp.doing + sp.todo, start = new Date(sp.start), end = new Date(sp.end);
+    const timePct = Math.min(100, Math.max(0, (Date.now() - start) / (end - start) * 100)), donePct = total ? sp.done / total * 100 : 0;
+    const left = Math.ceil((end - Date.now()) / DAY), onTrack = donePct + 10 >= timePct;
+    const card = el('div', 'sprint'), top = el('div', 'top'), name = el('div');
+    const fmtD = x => x.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    name.append(el('b', null, sp.name), el('div', 'dates', `${fmtD(start)} → ${fmtD(end)} · ${left > 0 ? left + ' day' + (left > 1 ? 's' : '') + ' left' : 'ends today'}`));
+    top.append(name, pill(onTrack ? 'On track' : 'Behind', onTrack ? 's-ok' : 's-warn'));
+    const big = el('div', 'big', `${sp.done}/${total}`); big.append(el('small', null, 'of your tickets done'));
+    const bar = el('div', 'stackbar'), keys = el('div', 'keys');
+    [['d', 'var(--ok)', sp.done, 'done'], ['p', 'var(--brand)', sp.doing, 'in progress'], ['o', 'var(--line)', sp.todo, 'to do']].forEach(([c, color, n, label]) => {
+      if (!n) return;
+      const i = el('i', c); i.style.width = (n / total * 100) + '%'; i.title = `${n} ${label}`; bar.append(i);
+      const k = el('span'), dot = el('i'); dot.style.background = color; k.append(dot, `${n} ${label}`); keys.append(k);
+    });
+    const tb = el('div', 'timebar'), ti = el('i'); ti.style.width = timePct + '%'; tb.title = `${Math.round(timePct)}% of the sprint has passed`; tb.append(ti);
+    card.append(top, big, bar, tb, keys); sprints.append(card);
+  });
+  sprints.hidden = !(d.sprints || []).length;
+  // Numbers
+  const merged = d.authored.filter(p => p.state === 'merged').length;
+  kpi('su-prs', d.authored.length, merged ? `${merged} merged` : 'none merged', '');
+  kpi('su-rev', d.reviewed.length, d.reviewed.length ? 'for teammates' : 'none yet', '');
+  kpi('su-hrs', fmtH(loggedSec), loggedSec >= 8 * 3600 ? 'full day' : `${fmtH(8 * 3600 - loggedSec)} short of 8h`, loggedSec >= 8 * 3600 ? '' : 'warn');
+  kpi('su-bld', d.builds.passed + d.builds.failed, `${d.builds.passed} passed · ${d.builds.failed} failed`, d.builds.failed ? 'alert' : '');
+  // Columns
+  const since = new Date(d.since + 'T00:00').toLocaleDateString(undefined, { weekday: 'long' });
+  $('suSince').textContent = 'since ' + since; $('suTn').textContent = T.length ? T.length + ' to do' : ''; $('suBn').textContent = B.length ? String(B.length) : '';
+  [['suY', Y, 'No activity yet', 'Nothing on GitHub or Jira since ' + since + '.'], ['suT', T, 'Nothing queued', 'No reviews, merges or in-progress tickets.'], ['suB', B, 'No blockers', 'Nothing is stuck.']]
+    .forEach(([id, items, empty, text]) => {
+      const box = $(id); box.textContent = '';
+      items.forEach(i => listItem(box, tag(i.cls, i.icon), i.title, i.sub, null, i.url));
+      if (!items.length) emptyBox(box, empty, text);
+    });
+  $('suOut').hidden = false;
+  // Text for Teams
+  const lines = list => list.length ? list.map(i => '• ' + i.text) : ['• None'];
+  const head = (d.sprints || []).slice(0, 1).map(sp => `${sp.name}: ${sp.done}/${sp.done + sp.doing + sp.todo} of my tickets done`);
+  scrumText = [...head, ...(head.length ? [''] : []), `Yesterday (since ${since})`, ...lines(Y), '', 'Today', ...lines(T), '', 'Blockers', ...lines(B)].join('\n');
 }
 $('suRefresh').addEventListener('click', loadStandup);
-$('suCopy').addEventListener('click', e => copyText($('suText').textContent, e.currentTarget));
+$('suCopy').addEventListener('click', e => copyText(scrumText, e.currentTarget));
 
 // Time: what the viewer logged in Jira (last 14 days) and estimate vs logged on their open tickets.
 const fmtH = sec => { const m = Math.round((sec || 0) / 60), h = Math.floor(m / 60); return h && m % 60 ? `${h}h ${m % 60}m` : h ? `${h}h` : `${m % 60}m`; };
@@ -1174,7 +1267,7 @@ const weekStart = (offset = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0)
 let myTime = null;
 async function loadTime(refresh) {
   const v = viewer();
-  $('tmTitle').textContent = v ? personName(v) + "'s time" : 'Time';
+  $('tmTitle').textContent = v ? personName(v) + "'s time log" : 'Time Log';
   if (!state) return;   // load() calls again once the data is in
   if (!v) { $('tmMsg').textContent = 'Pick your name at the top right first.'; $('tmOut').hidden = true; return; }
   if (!refresh && myTime && myTime.person === v && $('tmOut').hidden === false) return;

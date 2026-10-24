@@ -563,8 +563,31 @@ async function standup(person) {
     search(`is:pr author:${login} updated:>=${since}`),
     search(`is:pr reviewed-by:${login} -author:${login} updated:>=${since}`)]);
   const built = [...runs.values()].filter(r => r.author === person && r.updated.slice(0, 10) >= since);
+  const [moved, sprints] = JIRA_MODE && !jiraError ? await Promise.all([
+    jiraSearch(`assignee = "${person}" AND statusCategoryChangedDate >= "${since}" ORDER BY updated DESC`, 20).catch(() => []),
+    sprintsFor(person).catch(() => null)]) : [[], null];
   return { person, since, authored: authored.items.map(pr), reviewed: reviewed.items.map(pr),
-    builds: { passed: built.filter(r => r.conclusion === 'success').length, failed: built.filter(r => r.conclusion === 'failure').length } };
+    builds: { passed: built.filter(r => r.conclusion === 'success').length, failed: built.filter(r => r.conclusion === 'failure').length,
+      failedList: built.filter(r => r.conclusion === 'failure').slice(0, 5).map(r => ({ repo: r.repo, branch: r.branch, url: r.url, reason: r.reason })) },
+    moved, sprints };
+}
+
+// Your tickets in the active sprints (team sprints first, the one ending soonest first). Needs the Jira API: the CLI can't read the Sprint field.
+async function sprintsFor(person) {
+  if (JIRA_MODE !== 'api') return null;
+  const field = cfg.sprintField || 'customfield_10010';
+  const issues = await jiraApi(`assignee = "${person}" AND sprint in openSprints() ORDER BY status`, 200, `summary,status,${field}`);
+  const byId = {};
+  for (const i of issues) {
+    const t = jiraIssue(i);
+    for (const s of (i.fields[field] || []).filter(x => x.state === 'active')) {
+      const sp = byId[s.id] = byId[s.id] || { name: s.name, start: s.startDate, end: s.endDate, goal: s.goal || '', done: 0, doing: 0, todo: 0, tickets: [] };
+      sp[t.cat === 'done' ? 'done' : t.cat === 'indeterminate' ? 'doing' : 'todo']++;
+      sp.tickets.push({ key: t.key, summary: t.summary, status: t.status, cat: t.cat });
+    }
+  }
+  const team = new RegExp(cfg.teamName || '^$', 'i');
+  return Object.values(byId).sort((a, b) => (team.test(b.name) - team.test(a.name)) || String(a.end).localeCompare(String(b.end))).slice(0, 3);
 }
 
 // Release notes: every ticket in the commits between two refs, across all repos.
