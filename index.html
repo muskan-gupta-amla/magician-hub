@@ -319,8 +319,6 @@
   .sprint .keys { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--fg-2); }
   .sprint .keys span { display:inline-flex; align-items:center; gap:5px; }
   .sprint .keys i { width:8px; height:8px; border-radius:2px; }
-  .rel { padding:12px 16px 14px; display:grid; gap:10px; }
-  .rel .tlist { border-top:0; padding-top:0; }
   .tlist { display:grid; gap:2px; border-top:1px dashed var(--line); padding-top:8px; }
   .trow { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; padding:4px 6px; border-radius:8px;
     text-decoration:none; color:var(--fg); font-size:12.5px; }
@@ -564,10 +562,6 @@
       <div id="suOut" class="stack" hidden>
         <div class="brief" id="suBrief"></div>
         <div class="sprints" id="suSprints"></div>
-        <div class="panel" id="suRelPanel" hidden>
-          <div class="panel-h"><h2 id="suRelName">Current fix version</h2><span class="muted" id="suRelWhen"></span></div>
-          <div class="rel" id="suRelease"></div>
-        </div>
         <div class="kpis four">
           <div class="kpi" id="su-prs"><div class="top">PRs worked on</div><div class="n">–</div><div class="sub"></div></div>
           <div class="kpi" id="su-rev"><div class="top">Reviews done</div><div class="n">–</div><div class="sub"></div></div>
@@ -1220,12 +1214,16 @@ async function loadStandup() {
     Y.push({ icon: p.state === 'merged' ? 'merge' : 'pr', cls: p.state === 'merged' ? 'ok' : 'info', title: `${verb} ${pr(p)}`, sub: p.title, url: p.url, text: `${verb} ${prLine(p)}` });
   });
   d.reviewed.forEach(p => Y.push({ icon: 'eye', cls: 'info', title: `Reviewed ${pr(p)}`, sub: `${personName(p.author)} · ${p.title}`, url: p.url, text: `Reviewed ${prLine(p)} (${personName(p.author)})` }));
-  (d.moved || []).forEach(t => Y.push({ icon: 'arrow', cls: t.cat === 'done' ? 'ok' : 'brand', title: `${t.key} → ${t.status}`, sub: t.summary, url: jiraUrl(t.key), text: `Moved ${t.key} ${t.summary} to ${t.status}` }));
+  if (d.activity) d.activity.forEach(a => {   // what you did in Jira, one line per ticket
+    const did = [a.created && 'created it', ...a.moves.map(m => `moved ${m.from} → ${m.to}`), a.comments && (a.comments === 1 ? 'commented' : `commented ${a.comments}×`),
+      a.assigned && `assigned to ${a.assigned}`, a.attachments && (a.attachments === 1 ? 'added a file' : `added ${a.attachments} files`)].filter(Boolean);
+    const icon = a.moves.length ? 'arrow' : a.comments ? 'msg' : a.assigned ? 'user' : 'check';
+    Y.push({ icon, cls: a.moves.length ? 'brand' : 'info', title: `${a.key}: ${did[0]}`, sub: [...did.slice(1), a.summary].join(' · '), url: jiraUrl(a.key),
+      text: `${a.key} ${a.summary}: ${did.join(', ')}` });
+  });
+  else (d.moved || []).forEach(t => Y.push({ icon: 'arrow', cls: t.cat === 'done' ? 'ok' : 'brand', title: `${t.key} → ${t.status}`, sub: t.summary, url: jiraUrl(t.key), text: `${t.key} ${t.summary} is now ${t.status}` }));
   const logged = myTime && myTime.person === v ? myTime.entries.filter(e => dayKey(e.started) >= d.since && dayKey(e.started) < dayKey(Date.now())) : [];
-  const loggedSec = logged.reduce((n, e) => n + e.seconds, 0), per = {};
-  logged.forEach(e => { per[e.key] = (per[e.key] || 0) + e.seconds; });
-  const perText = sep => Object.entries(per).map(([k, sec]) => `${k} ${fmtH(sec)}`).join(sep);
-  if (loggedSec) Y.push({ icon: 'clock', cls: 'brand', title: `Logged ${fmtH(loggedSec)}`, sub: perText(' · '), url: '#time', text: `Logged ${fmtH(loggedSec)} (${perText(', ')})` });
+  const loggedSec = logged.reduce((n, e) => n + e.seconds, 0);
   // Today
   mine.filter(p => p.review === 'changes').forEach(p => T.push({ icon: 'msg', cls: 'bad', title: `Address review comments on ${pr(p)}`, sub: p.title, url: p.url, text: `Address review comments on ${prLine(p)}` }));
   mine.filter(p => p.review === 'approved').forEach(p => T.push({ icon: 'merge', cls: 'ok', title: `Merge ${pr(p)}`, sub: 'Approved · ' + p.title, url: p.url, text: `Merge ${prLine(p)} (approved)` }));
@@ -1274,23 +1272,6 @@ async function loadStandup() {
     sprints.append(card);
   });
   sprints.hidden = !(d.sprints || []).length;
-  // Current fix version: the one releasing soonest (by date in Jira, else the lowest unreleased version), with your tickets in it
-  const current = currentRelease(d.releases), rel = $('suRelease'); rel.textContent = '';
-  if (current) {
-    const r = current, days = r.date ? Math.ceil((new Date(r.date + 'T00:00') - Date.now()) / DAY) : null;
-    $('suRelName').textContent = 'Current fix version · ' + r.name;
-    $('suRelWhen').textContent = (r.date ? `${new Date(r.date + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · ${days > 0 ? `in ${days} day${days > 1 ? 's' : ''}` : days === 0 ? 'today' : 'date passed'}` : 'no release date in Jira')
-      + ` · ${r.done}/${r.total} of your tickets done`;
-    const bar = el('div', 'stackbar'), fill = el('i', 'd'), list = el('div', 'tlist');
-    fill.style.width = (r.done / r.total * 100) + '%'; bar.append(fill);
-    const order = { indeterminate: 0, new: 1, done: 2 };
-    [...r.tickets].sort((a, b) => (order[a.cat] ?? 1) - (order[b.cat] ?? 1)).forEach(t => {
-      const row = link('', jiraUrl(t.key), 'trow'); row.title = `${t.key} · ${t.summary}`;
-      row.append(el('span', 'mono', t.key), el('span', 'ts', t.summary), pill(t.status, JIRA_CAT[t.cat] || 's-off')); list.append(row);
-    });
-    rel.append(bar, list);
-  }
-  $('suRelPanel').hidden = !current;
   // Numbers
   const merged = d.authored.filter(p => p.state === 'merged').length;
   kpi('su-prs', d.authored.length, merged ? `${merged} merged` : 'none merged', '');
@@ -1314,8 +1295,6 @@ async function loadStandup() {
   renderBrief(v, d, { Y, T, B, loggedSec, since });
 }
 
-const currentRelease = list => [...(list || [])].sort((a, b) => (a.date ? 0 : 1) - (b.date ? 0 : 1) || String(a.date).localeCompare(String(b.date)))[0] || null;   // dated first, soonest first; else the lowest version (hub order)
-
 // Morning brief: one glance at yesterday, today, blockers and the sprint.
 function renderBrief(v, d, x) {
   const box = $('suBrief'); box.textContent = '';
@@ -1327,9 +1306,10 @@ function renderBrief(v, d, x) {
   const pts = el('div', 'pts'), point = (cls, ic, ...parts) => { const p = el('div', 'pt'), t = el('div'); t.append(...parts); p.append(tag(cls, ic), t); pts.append(p); };
   const B = (text) => el('b', null, text), n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
   // Yesterday
-  const merged = d.authored.filter(p => p.state === 'merged').length, moved = (d.moved || []).length;
+  const merged = d.authored.filter(p => p.state === 'merged').length, act = d.activity || [];
+  const moves = act.reduce((k, a) => k + a.moves.length, 0), comments = act.reduce((k, a) => k + a.comments, 0);
   const did = [d.authored.length && n(d.authored.length, 'PR', 'PRs') + (merged ? ` (${merged} merged)` : ''), d.reviewed.length && n(d.reviewed.length, 'review', 'reviews'),
-    moved && n(moved, 'ticket moved', 'tickets moved'), x.loggedSec && fmtH(x.loggedSec) + ' logged'].filter(Boolean);
+    act.length && n(act.length, 'Jira ticket', 'Jira tickets') + ` (${[moves && n(moves, 'move', 'moves'), comments && n(comments, 'comment', 'comments')].filter(Boolean).join(', ') || 'updated'})`].filter(Boolean);
   point('ok', 'check', B(`Since ${x.since}: `), did.length ? did.join(' · ') : 'no activity on GitHub or Jira');
   // Today
   point('brand', 'arrow', B('Today: '), x.T.length ? `${n(x.T.length, 'thing', 'things')} to do, first: ${x.T[0].title}` : 'nothing queued yet');
@@ -1340,8 +1320,6 @@ function renderBrief(v, d, x) {
     const left = Math.ceil((new Date(sp.end) - now) / DAY), open = sp.doing + sp.todo;
     point('info', 'clock', B(sp.name + ': '), `${left > 0 ? `ends in ${n(left, 'day', 'days')}` : 'ends today'} · ${open ? `${open} of your ${sp.done + open} tickets still open` : 'all your tickets done'}`);
   }
-  const next = currentRelease(d.releases);
-  if (next) point('brand', 'merge', B(`Fix version ${next.name}: `), `${next.date ? new Date(next.date + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' · ' : ''}${next.done}/${next.total} of your tickets done`);
   box.append(pts);
 }
 $('suRefresh').addEventListener('click', loadStandup);

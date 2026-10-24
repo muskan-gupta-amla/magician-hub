@@ -26,6 +26,7 @@ const apiPulls = [
 const posted = [], worklogs = [], estimates = [];   // Teams posts and time logged, as the fake services received them
 let teamAnswer = [];                // assignees the fake Jira returns for the Team = Magicians search
 
+const SOON = new Date().toISOString();   // "just now": always after the last working day
 const realFetch = globalThis.fetch;   // the test's own calls to the hub stay real
 globalThis.fetch = async (url, opts) => {
   if (url.startsWith('http://127.0.0.1:')) return realFetch(url, opts);
@@ -37,6 +38,18 @@ globalThis.fetch = async (url, opts) => {
     if (key === 'Z10-400') return reply({ errorMessages: [], errors: { timeLogged: 'Cannot log work on a closed period.' } }, 400);
     worklogs.push({ key, ...JSON.parse(opts.body) });
     return reply({ id: '1' }, 201);
+  }
+  if (url.includes('/rest/api/3/user/search?query=')) return reply([{ accountId: 'acc-asha', emailAddress: 'asha.rao@amla.io' }]);
+  if (url.includes('/rest/api/3/search/jql') && new URL(url).searchParams.get('jql').startsWith('issuekey in updatedBy("acc-asha"')) {
+    const me = { accountId: 'acc-asha' }, other = { accountId: 'acc-ben' }, old = '2020-01-01T10:00:00.000+0000';
+    return reply({ issues: [
+      { key: 'Z10-3', fields: { summary: 'Waiting for review', status: { name: 'Code Review' }, created: old, reporter: other,
+        comment: { comments: [{ author: me, created: SOON }, { author: other, created: SOON }, { author: me, created: old }] } },
+        changelog: { histories: [{ author: me, created: SOON, items: [{ field: 'status', fromString: 'In Progress', toString: 'Code Review' },
+          { field: 'assignee', fromString: 'Asha Rao', toString: 'Ben Kumar' }, { field: 'timespent', fromString: '0', toString: '3600' }] },
+          { author: other, created: SOON, items: [{ field: 'status', fromString: 'Code Review', toString: 'QA' }] }] } },
+      { key: 'Z10-7', fields: { summary: 'Fixed earlier', status: { name: 'Done' }, created: old, reporter: me, comment: { comments: [] } },
+        changelog: { histories: [{ author: me, created: SOON, items: [{ field: 'WorklogId', fromString: '', toString: '1' }] }] } }] });   // worklog only: left out
   }
   if (url.includes('/rest/api/3/mypermissions?issueKey=')) {   // Z10-32 is a Story where Jira doesn't let you log time
     return reply({ permissions: { WORK_ON_ISSUES: { havePermission: !url.includes('issueKey=Z10-32&') } } });
@@ -72,8 +85,7 @@ globalThis.fetch = async (url, opts) => {
     if (jql.includes('sprint in openSprints()')) {   // the Daily Scrum's sprint card
       const sprint = { id: 20, name: 'Magicians Sprint 20', state: 'active', startDate: '2026-10-05T00:00:00Z', endDate: '2026-10-26T00:00:00Z', goal: '' };
       return reply({ issues: [['Z10-2', 'indeterminate'], ['Z10-7', 'done'], ['Z10-50', 'new']].map(([key, cat]) =>
-        ({ key, fields: { ...all.find(i => i.key === key).fields, status: { name: cat, statusCategory: { key: cat } }, customfield_10010: [sprint, { id: 19, state: 'closed' }],
-          fixVersions: key === 'Z10-50' ? [] : [{ name: key === 'Z10-2' ? '10.14.10.0' : '10.14.9.0', released: false }, { name: '10.14.0.0', released: true }] } })) });
+        ({ key, fields: { ...all.find(i => i.key === key).fields, status: { name: cat, statusCategory: { key: cat } }, customfield_10010: [sprint, { id: 19, state: 'closed' }] } })) });
     }
     if (jql.includes('statusCategoryChangedDate')) return reply({ issues: all.filter(i => i.key === 'Z10-2') });
     if (jql.startsWith('worklogAuthor = "asha.rao@amla.io"')) return reply({ issues: all.filter(i => ['Z10-2', 'Z10-7'].includes(i.key)) });
@@ -171,7 +183,8 @@ test('standup: PRs authored and reviewed since the last working day, plus builds
   assert.deepEqual(body.builds, { passed: 0, failed: 0, failedList: [] });
   assert.deepEqual(body.moved.map(t => `${t.key} ${t.status}`), ['Z10-2 In Progress']);   // moved since the last working day
   assert.deepEqual(body.sprints.map(s => [s.name, s.done, s.doing, s.todo, s.tickets.length]), [['Magicians Sprint 20', 1, 1, 1, 3]]);
-  assert.deepEqual(body.releases.map(r => [r.name, r.total, r.done]), [['10.14.9.0', 1, 1], ['10.14.10.0', 1, 0]]);   // unreleased only, by version number
+  assert.deepEqual(body.activity, [{ key: 'Z10-3', summary: 'Waiting for review', status: 'Code Review', moves: [{ from: 'In Progress', to: 'Code Review', at: SOON }],
+    comments: 1, assigned: 'Ben Kumar', attachments: 0, created: false }]);   // only your own changes since the last working day
   assert.equal((await api('/api/standup', { person: 'stranger@example.com' })).status, 400);
 });
 
