@@ -23,7 +23,7 @@ const apiPulls = [
   pull(2, 'Z10-2: Change with no reviewer', 'asha-rao-amla', []),
   pull(3, 'Z10-3: Waiting for review', 'chitra-iyer-amla', ['asha-rao-amla'], fiveDaysAgo)
 ];
-const posted = [], worklogs = [];   // Teams posts and time logged, as the fake services received them
+const posted = [], worklogs = [], estimates = [];   // Teams posts and time logged, as the fake services received them
 let teamAnswer = [];                // assignees the fake Jira returns for the Team = Magicians search
 
 const realFetch = globalThis.fetch;   // the test's own calls to the hub stay real
@@ -37,6 +37,17 @@ globalThis.fetch = async (url, opts) => {
     if (key === 'Z10-400') return reply({ errorMessages: [], errors: { timeLogged: 'Cannot log work on a closed period.' } }, 400);
     worklogs.push({ key, ...JSON.parse(opts.body) });
     return reply({ id: '1' }, 201);
+  }
+  if (/\/rest\/api\/3\/issue\/Z10-(32|33)\?fields=timetracking/.test(url)) {   // one ticket's time, for the Log time form
+    const estimated = url.includes('Z10-33');
+    return reply({ key: 'Z10-32', fields: { issuetype: { name: estimated ? 'Task' : 'Story' }, status: { name: 'Analysis' },
+      timetracking: estimated ? { originalEstimateSeconds: 28800, timeSpentSeconds: 36000, remainingEstimateSeconds: 0 } : {} },
+      editmeta: { fields: { timetracking: {} } } });
+  }
+  if (/\/rest\/api\/3\/issue\/Z10-(32|99)$/.test(url) && opts.method === 'PUT') {
+    if (url.endsWith('Z10-99')) return reply({ errorMessages: [], errors: { timetracking: 'Field timetracking cannot be set.' } }, 400);
+    estimates.push({ key: 'Z10-32', ...JSON.parse(opts.body) });
+    return { ok: true, status: 204, json: async () => { throw new Error('no body'); } };
   }
   if (url.startsWith('https://amla.atlassian.net/rest/api/3/issue/Z10-7/worklog?startedAfter=')) {
     const ago = days => new Date(Date.now() - days * 864e5).toISOString();
@@ -308,6 +319,19 @@ test('log time: refuses bad input, the future, unknown tickets and other website
   assert.equal((await postJson('/api/worklog', { key: 'Z10-400', time: '1h' })).body.error, 'Jira did not accept it: Cannot log work on a closed period.');   // Jira's own reason
   assert.equal((await postJson('/api/worklog', { key: 'Z10-2', time: '1h' }, {})).status, 403);   // no hub header: another website
   assert.equal(worklogs.length, before);
+});
+
+test('log time form: estimate, logged and remaining for a ticket; add an estimate when it has none', async () => {
+  assert.deepEqual((await api('/api/ticket-time', { key: 'z10-33' })).body,
+    { key: 'Z10-33', type: 'Task', status: 'Analysis', estimate: 28800, spent: 36000, remaining: 0, canSetEstimate: true });
+  const none = (await api('/api/ticket-time', { key: 'Z10-32' })).body;
+  assert.deepEqual([none.estimate, none.spent, none.canSetEstimate], [null, 0, true]);
+  assert.match((await postJson('/api/estimate', { key: 'Z10-32', time: 'soon' })).body.error, /like 4h/);
+  assert.deepEqual((await postJson('/api/estimate', { key: 'Z10-32', time: '4h 30m' })).body, { ok: true, key: 'Z10-32', seconds: 16200 });
+  assert.deepEqual(estimates.at(-1), { key: 'Z10-32', fields: { timetracking: { originalEstimate: '4h 30m' } } });
+  assert.equal((await postJson('/api/estimate', { key: 'Z10-99', time: '2h' })).body.error, 'Jira did not accept the estimate: Field timetracking cannot be set.');
+  assert.equal((await postJson('/api/estimate', { key: 'Z10-32', time: '2h' }, {})).status, 403);   // no hub header: another website
+  assert.equal(estimates.length, 1);
 });
 
 test('Friday reminder: once, on Friday at 16:00, when the week is under 40h', async () => {

@@ -485,6 +485,41 @@ async function logWork({ key, time, date, comment }) {
   return { ok: true, key, seconds, day };
 }
 
+// One ticket's time for the Log time form (read only): estimate, logged, remaining, and whether its estimate can be set.
+async function ticketTime(key) {
+  if (HOSTED || JIRA_MODE !== 'api' || jiraNeedsToken) return { error: 'Connect your Jira API token on the Time page first.' };
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key || '')) return { error: 'Pick a ticket.' };
+  const res = await fetch(`${new URL(cfg.jiraUrl).origin}/rest/api/3/issue/${key}?fields=timetracking,issuetype,status&expand=editmeta`,
+    { headers: { Authorization: jiraBasic(), Accept: 'application/json' } });
+  if (!res.ok) return { error: `Jira answered ${res.status} for ${key}.` };
+  const j = await res.json(), f = j.fields || {}, t = f.timetracking || {};
+  return { key, type: f.issuetype ? f.issuetype.name : '', status: f.status ? f.status.name : '',
+    estimate: t.originalEstimateSeconds == null ? null : t.originalEstimateSeconds, spent: t.timeSpentSeconds || 0,
+    remaining: t.remainingEstimateSeconds == null ? null : t.remainingEstimateSeconds,
+    canSetEstimate: !!(j.editmeta && j.editmeta.fields && j.editmeta.fields.timetracking) };
+}
+
+// Set a ticket's Original Estimate (PC only, your own token), e.g. before logging time on it.
+async function setEstimate({ key, time }) {
+  if (HOSTED) return { error: 'Set the estimate in Jira directly.' };
+  if (JIRA_MODE !== 'api' || jiraNeedsToken) return { error: 'Connect your Jira API token on the Time page first.' };
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key || '')) return { error: 'Pick a ticket.' };
+  const seconds = parseDuration(time);
+  if (seconds < 60 || seconds > 1000 * 3600) return { error: 'Enter the estimate like 4h or 1h 30m.' };
+  const m = Math.round(seconds / 60), text = `${Math.floor(m / 60)}h ${m % 60}m`;
+  const res = await fetch(`${new URL(cfg.jiraUrl).origin}/rest/api/3/issue/${key}`, {
+    method: 'PUT', headers: { Authorization: jiraBasic(), Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { timetracking: { originalEstimate: text } } }) });
+  if (!res.ok) {
+    let why = '';
+    try { const j = await res.json(); why = [...(j.errorMessages || []), ...Object.values(j.errors || {})].join(' ').trim(); } catch (e) { /* no JSON body */ }
+    console.error(`Set estimate on ${key} failed: Jira ${res.status} ${why}`);
+    return { error: why ? `Jira did not accept the estimate: ${why}` : `Jira answered ${res.status}. Try again.` };
+  }
+  timeCache.delete(jiraAuth.email);
+  return { ok: true, key, seconds };
+}
+
 async function connectJira(email, token) {
   if (HOSTED) return { error: 'The team server uses its own Jira account.' };
   if (!/^[^@\s]+@[^@\s]+$/.test(email || '') || !(token || '').trim()) return { error: 'Enter your Jira email and the token.' };
@@ -856,7 +891,7 @@ const server = http.createServer(async (req, res) => {
   }
   // Actions that change something: connect a Jira token, log time. Only from this hub's own page on this PC:
   // POST, our own header (other websites can't send it without a CORS check we never answer), addressed to localhost.
-  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i) };
+  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i) };
   if (actions[url.pathname]) {
     const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '');
     if (HOSTED || req.method !== 'POST' || req.headers['x-magician-hub'] !== '1' || !local) return sendJson(res, 403, { error: 'Not allowed.' });
@@ -884,6 +919,7 @@ const server = http.createServer(async (req, res) => {
   const tools = {   // on-demand lookups; each returns { error } on bad input
     '/api/fix': () => { const key = parseKey(q('key')); return key ? findFix(key) : { error: 'Enter a ticket key or Jira link, like Z10-41590.' }; },
     '/api/standup': () => team.has(q('person').toLowerCase()) ? standup(q('person').toLowerCase()) : { error: 'Pick your name at the top right first.' },
+    '/api/ticket-time': () => ticketTime(q('key').toUpperCase()),
     '/api/release': () => q('from') && q('to') ? releaseNotes(q('from'), q('to')) : { error: 'Enter both refs, like v10.14.0.6 and v10.14.0.0-hotfixes.' },
     '/api/impact': () => q('pr') ? impact(q('pr'), Math.max(0, parseInt(q('from'), 10) || 0)) : { error: 'Enter a PR link or a ticket key.' },
     '/api/jira-mine': async () => {

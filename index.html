@@ -278,6 +278,49 @@
   @keyframes toastLife { to { transform:scaleX(0); } }
 
   #tmType { min-width:170px; }
+
+  /* Time charts: week ring, stacked day bars (one colour per ticket) with what is left to 8h */
+  .weekchart { display:grid; grid-template-columns:170px minmax(0,1fr); gap:24px; align-items:center; padding:18px 20px; }
+  .ring { position:relative; width:150px; height:150px; justify-self:center; }
+  .ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+  .ring .c { position:absolute; inset:0; display:grid; place-content:center; text-align:center; }
+  .ring .c b { font-size:22px; font-weight:800; letter-spacing:-.02em; line-height:1.1; }
+  .ring .c span { font-size:12px; color:var(--muted); }
+  .weekchart .week { padding:0; gap:12px; }
+  .day { grid-template-columns:92px minmax(0,1fr) 128px; align-items:start; }
+  .day > span:first-child { padding-top:1px; color:var(--fg-2); }
+  .bar { height:14px; display:flex; gap:2px; background:transparent; overflow:visible; }
+  .bar i { border-radius:4px; min-width:3px; transition:filter .15s; }
+  .bar i:hover { filter:brightness(1.15); }
+  .bar .left { flex:none; border-radius:4px; background:repeating-linear-gradient(-45deg, var(--panel-2) 0 6px, var(--line-2) 6px 12px);
+    box-shadow:inset 0 0 0 1px var(--line); }
+  .day .tix { grid-column:2; margin-top:-6px; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .day .h { display:grid; line-height:1.25; }
+  .day .h small { font-size:11.5px; font-weight:600; color:var(--warn); }
+  .day .h small.done { color:var(--ok); }
+  .legend { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:16px; padding-top:12px; border-top:1px dashed var(--line); font-size:12px; color:var(--fg-2); }
+  .legend span { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  .legend i { width:10px; height:10px; border-radius:3px; }
+  .legend b { font-weight:700; color:var(--fg); }
+
+  /* Log time: the chosen ticket's estimate, and the result of a log */
+  .tkinfo { flex:1 0 100%; order:5; display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; font-size:12.5px; color:var(--fg-2); min-height:0; }
+  .tkinfo:empty { display:none; }
+  .tkinfo .meter { flex:0 1 220px; height:6px; border-radius:99px; background:var(--panel-2); overflow:hidden; }
+  .tkinfo .meter i { display:block; height:100%; background:var(--ok); border-radius:99px; }
+  .tkinfo .meter.over i { background:var(--bad); }
+  .tkinfo b { color:var(--fg); }
+  .tkinfo .est { display:inline-flex; gap:6px; align-items:center; }
+  .tkinfo .est input { width:84px; font:500 13px var(--font); padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+  #tmLogForm .field, #tmLogForm .btn { order:1; } #tmLogForm .field.wide { order:2; } #tmLogForm .btn.primary, #tmLogForm .status { order:3; }
+  .status { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:5px 10px; border-radius:999px; align-self:center; }
+  .status:empty { display:none; }
+  .status.ok { background:var(--ok-bg); color:var(--ok); }
+  .status.bad { background:var(--bad-bg); color:var(--bad); border-radius:10px; flex:1 0 100%; order:6; }
+  .status.busy { background:var(--panel-2); color:var(--fg-2); }
+  .status.ok::before { content:"✓"; font-weight:800; }
+  .status.bad::before { content:"!"; width:16px; height:16px; border-radius:50%; background:var(--bad); color:#fff; display:inline-grid; place-items:center; font-size:11px; font-weight:800; flex:none; }
+  @media (max-width:700px) { .weekchart { grid-template-columns:1fr; } .day { grid-template-columns:64px minmax(0,1fr) 92px; } }
   @media (prefers-reduced-motion: reduce) { .toast, .toast::after { animation:none; } td, .panel { transition:none; } }
 
   @media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
@@ -480,7 +523,7 @@
     <section data-view="time" class="stack" hidden>
       <div class="panel">
         <div class="panel-h"><h2 id="tmTitle">Time</h2>
-          <div class="row"><button class="btn" id="tmRefresh" type="button">Refresh</button><button class="btn primary" id="tmCopy" type="button" data-label="Copy timesheet">Copy timesheet</button></div></div>
+          <div class="row"><button class="btn" id="tmRefresh" type="button">Refresh</button></div></div>
         <div class="hint pad" id="tmMsg"></div>
       </div>
       <div id="tmOut" class="stack" hidden>
@@ -490,11 +533,12 @@
             <label class="field">Ticket<select id="tmKey"></select></label>
             <label class="field">Time<input id="tmHours" placeholder="2h 30m" autocomplete="off"></label>
             <label class="field">Date<input id="tmDate" type="date"></label>
+            <div class="tkinfo" id="tmTicketInfo" aria-live="polite"></div>
             <label class="field">Work type<select id="tmType"><option value="">Choose…</option></select></label>
             <label class="field wide">Comment<input id="tmComment" placeholder="What you worked on" autocomplete="off" list="tmCommentList"></label>
             <datalist id="tmCommentList"></datalist>
             <button class="btn primary" type="submit">Log time</button>
-            <span class="count" id="tmLogMsg"></span>
+            <span class="status" id="tmLogMsg" role="status"></span>
           </form>
         </div>
         <div class="kpis four">
@@ -505,7 +549,10 @@
         </div>
         <div class="panel">
           <div class="panel-h"><h2>This week, day by day</h2><span class="muted" id="tmWeekTotal"></span></div>
-          <div class="week" id="tmWeek"></div>
+          <div class="weekchart">
+            <div class="ring" id="tmRing"></div>
+            <div><div class="week" id="tmWeek"></div><div class="legend" id="tmLegend"></div></div>
+          </div>
         </div>
         <div class="panel">
           <div class="panel-h"><h2>My tickets: estimate vs logged</h2><span class="muted">Click a ticket to log time in Jira</span></div>
@@ -612,6 +659,7 @@ const shortRepo = r => r.replace(/^znode(10)?-/, '').replace(/-migration$|10x-pa
 function repoChip(r) { const c = el('span', 'chip', shortRepo(r)); c.title = r; return c; }
 
 // People: builds carry the commit email, PRs the GitHub login (first-last-amla).
+const TICKET_COLORS = ['#6D4AE0', '#0E9AA7', '#E0607E', '#F2A541', '#3B82F6', '#22A06B'];
 const COLORS = ['#5B3CC4', '#0E7C86', '#B5427A', '#2563B0', '#A15C00', '#13804A', '#7C3AED', '#C2361F'];
 function personName(id) {
   const parts = id.includes('@') ? id.split('@')[0].split('.') : id.replace(/-amla$/, '').split('-');
@@ -1124,7 +1172,7 @@ $('suCopy').addEventListener('click', e => copyText($('suText').textContent, e.c
 const fmtH = sec => { const m = Math.round((sec || 0) / 60), h = Math.floor(m / 60); return h && m % 60 ? `${h}h ${m % 60}m` : h ? `${h}h` : `${m % 60}m`; };
 const dayKey = d => new Date(d).toLocaleDateString('en-CA');
 const weekStart = (offset = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7); return d; };   // Monday
-let myTime = null, timeText = '';
+let myTime = null;
 async function loadTime(refresh) {
   const v = viewer();
   $('tmTitle').textContent = v ? personName(v) + "'s time" : 'Time';
@@ -1175,18 +1223,47 @@ function renderTime(d) {
   kpi('k-week', fmtH(weekSec), `of ${d.weekHours}h (${Math.round(weekSec / target * 100)}%)`, '');
   kpi('k-last', fmtH(sum(lastWeek)), `of ${d.weekHours}h`, '');
   kpi('k-over', over.length, 'open tickets', over.length ? 'alert' : '');
-  // Day by day, Monday to Friday (a weekend day only shows if time was logged on it)
+  // Day by day, Monday to Friday (a weekend day only shows if time was logged on it): one colour per ticket, and what is left to 8h
   const week = $('tmWeek'); week.textContent = '';
   const loggedOn = x => sum(thisWeek.filter(e => dayKey(e.started) === dayKey(x)));
   const days = [...Array(7)].map((_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return x; }).filter((x, i) => i < 5 || loggedOn(x));
-  const perDay = days.map(loggedOn);
-  const scale = Math.max(8 * 3600, ...perDay);
+  const perDay = days.map(loggedOn), DAY = (d.dayHours || 8) * 3600;
+  const scale = Math.max(DAY, ...perDay);
+  const weekTickets = Object.entries(thisWeek.reduce((m, e) => (m[e.key] = (m[e.key] || 0) + e.seconds, m), {})).sort((a, b) => b[1] - a[1]);
+  // Distinct colours however many tickets: the palette first, then hues spread by the golden angle
+  const colorOf = key => { const i = Math.max(0, weekTickets.findIndex(([k]) => k === key)); return i < 6 ? TICKET_COLORS[i] : `hsl(${(i * 137.5) % 360} 55% 52%)`; };
+  const summaryOf = key => (d.entries.find(e => e.key === key) || {}).summary || '';
   days.forEach((x, i) => {
-    const row = el('div', 'day' + (dayKey(x) === today ? ' today' : '')), bar = el('div', 'bar'), fill = el('i');
-    fill.style.width = (perDay[i] / scale * 100) + '%'; bar.append(fill);
-    row.append(el('span', null, x.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })), bar, el('span', 'h', perDay[i] ? fmtH(perDay[i]) : '–'));
+    const k = dayKey(x), isFuture = k > today, row = el('div', 'day' + (k === today ? ' today' : '')), bar = el('div', 'bar');
+    const onDay = thisWeek.filter(e => dayKey(e.started) === k), byTicket = {};
+    onDay.forEach(e => { byTicket[e.key] = (byTicket[e.key] || 0) + e.seconds; });
+    Object.entries(byTicket).sort((a, b) => b[1] - a[1]).forEach(([key, sec]) => {
+      const seg = el('i'); seg.style.width = (sec / scale * 100) + '%'; seg.style.background = colorOf(key);
+      seg.title = `${key} · ${fmtH(sec)}\n${summaryOf(key)}`; bar.append(seg);
+    });
+    const left = Math.max(0, DAY - perDay[i]);
+    if (left && !isFuture) { const l = el('i', 'left'); l.style.width = (left / scale * 100) + '%'; l.title = `${fmtH(left)} left to ${fmtH(DAY)}`; bar.append(l); }
+    const h = el('span', 'h', isFuture && !perDay[i] ? '–' : fmtH(perDay[i]));
+    if (!isFuture) h.append(left ? el('small', null, fmtH(left) + ' left') : el('small', 'done', 'done'));
+    row.append(el('span', null, x.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })), bar, h);
+    if (onDay.length) row.append(el('span', 'tix', Object.entries(byTicket).sort((a, b) => b[1] - a[1]).map(([key, sec]) => `${key} ${fmtH(sec)}`).join('  ·  ')));
     week.append(row);
   });
+  // Legend: this week's tickets with their colour and hours
+  const legend = $('tmLegend'); legend.textContent = '';
+  weekTickets.forEach(([key, sec]) => { const sp = el('span'), dot = el('i'); dot.style.background = colorOf(key); sp.title = summaryOf(key); sp.append(dot, key, el('b', null, fmtH(sec))); legend.append(sp); });
+  legend.hidden = !weekTickets.length;
+  // Week ring: logged against the weekly target
+  const ring = $('tmRing'); ring.textContent = '';
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), R = 52, C = 2 * Math.PI * R, pct = Math.min(1, weekSec / target);
+  svg.setAttribute('viewBox', '0 0 120 120');
+  [['var(--panel-2)', 1], [weekSec >= target ? 'var(--ok)' : 'var(--brand)', pct]].forEach(([stroke, part]) => {
+    const c = document.createElementNS(NS, 'circle');
+    Object.entries({ cx: 60, cy: 60, r: R, fill: 'none', 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-dasharray': `${part * C} ${C}` }).forEach(([a, v]) => c.setAttribute(a, v));
+    c.style.stroke = stroke; if (part > 0) svg.append(c);
+  });
+  const center = el('div', 'c'); center.append(el('b', null, fmtH(weekSec)), el('span', null, `of ${d.weekHours}h · ${Math.round(weekSec / target * 100)}%`));
+  ring.append(svg, center);
   $('tmWeekTotal').textContent = `${fmtH(weekSec)} of ${d.weekHours}h`;
   // Estimate vs logged: over estimate first, then in progress
   const body = $('tmTickets'), rank = t => (t.estimate && t.spent > t.estimate ? 0 : t.cat === 'indeterminate' ? 1 : 2);
@@ -1196,7 +1273,7 @@ function renderTime(d) {
     name.append(link(t.key + ' · ' + t.summary, jiraUrl(t.key)));
     if (state.canLogTime && state.canLogTime === d.person) {   // "Log" fills the form for this ticket
       const b = el('button', 'btn sm', 'Log'); b.type = 'button'; b.style.marginTop = '4px';
-      b.onclick = () => { $('tmKey').value = t.key; $('tmLogPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('tmHours').focus(); };
+      b.onclick = () => { $('tmKey').value = t.key; showTicketInfo(); $('tmLogPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('tmHours').focus(); };
       name.append(el('div'), b);
     }
     cell(tr, name); cell(tr, pill(t.status, JIRA_CAT[t.cat] || 's-off'), 'fit');
@@ -1214,6 +1291,7 @@ function renderTime(d) {
     sel.textContent = '';
     opts.forEach(([k, s]) => { const o = el('option', null, `${k} · ${s}`.slice(0, 80)); o.value = k; sel.append(o); });
     if (keep) sel.value = keep;
+    showTicketInfo();
     $('tmDate').max = today; if (!$('tmDate').value) $('tmDate').value = today;
   }
   // Recent logs
@@ -1221,10 +1299,6 @@ function renderTime(d) {
   d.entries.slice(0, 30).forEach(e => listItem(logs, el('span', 'chip', new Date(e.started).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })),
     e.key + ' · ' + e.summary, e.comment || 'No comment', el('span', 'r', fmtH(e.seconds)), jiraUrl(e.key)));
   if (!d.entries.length) emptyBox(logs, 'No time logged in the last 14 days');
-  // Timesheet text: this week per ticket
-  const perTicket = {}; thisWeek.forEach(e => { perTicket[e.key] = perTicket[e.key] || { summary: e.summary, sec: 0 }; perTicket[e.key].sec += e.seconds; });
-  timeText = `Timesheet ${mon.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}–${days[days.length - 1].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: ${fmtH(weekSec)}\n\n`
-    + Object.entries(perTicket).sort((a, b) => b[1].sec - a[1].sec).map(([k, x]) => `• ${k} ${x.summary}: ${fmtH(x.sec)}`).join('\n');
   $('tmOut').hidden = false;
 }
 $('tmRefresh').addEventListener('click', () => loadTime(true));
@@ -1250,20 +1324,61 @@ function fillCommentList(entries) {
   [...entries.map(e => (e.comment || '').trim()).filter(c => c && c.length <= 120), ...COMMENT_PRESETS]
     .filter((c, i, a) => a.indexOf(c) === i).slice(0, 25).forEach(c => { const o = el('option'); o.value = c; list.append(o); });
 }
+// The chosen ticket's estimate, logged and remaining, read from Jira when you pick it; add an estimate when it has none.
+const ticketInfo = {};
+const setStatus = (cls, text) => { const m = $('tmLogMsg'); m.className = 'status ' + cls; m.textContent = text; };
+const part = (label, value, cls) => { const sp = el('span', cls, label + ' '); sp.append(el('b', null, value)); return sp; };
+async function showTicketInfo(force) {
+  const key = $('tmKey').value, box = $('tmTicketInfo');
+  if (!key) { box.textContent = ''; return; }
+  if (force || !ticketInfo[key]) {
+    box.textContent = ''; box.append(el('span', 'spinner'), el('span', 'muted', 'Reading ' + key + '…'));
+    try { ticketInfo[key] = await (await fetch('/api/ticket-time?key=' + encodeURIComponent(key))).json(); }
+    catch (e) { ticketInfo[key] = { error: 'Hub is not running.' }; }
+  }
+  if ($('tmKey').value !== key) return;   // picked another ticket meanwhile
+  const t = ticketInfo[key]; box.textContent = '';
+  if (t.error) { box.append(el('span', 'muted', t.error)); delete ticketInfo[key]; return; }
+  if (t.estimate) {
+    const over = t.spent > t.estimate, meter = el('div', 'meter' + (over ? ' over' : '')), fill = el('i');
+    fill.style.width = Math.min(100, t.spent / t.estimate * 100) + '%'; meter.append(fill);
+    box.append(meter, part('Estimate', fmtH(t.estimate)), part('Logged', fmtH(t.spent)),
+      over ? el('span', 'over', fmtH(t.spent - t.estimate) + ' over estimate') : part('Remaining', fmtH(t.remaining == null ? t.estimate - t.spent : t.remaining)));
+    return;
+  }
+  box.append(part('Logged', fmtH(t.spent)), el('span', 'muted', 'No original estimate on ' + key));
+  if (!t.canSetEstimate) return;
+  const est = el('span', 'est'), input = el('input'), save = el('button', 'btn sm', 'Add estimate');
+  input.placeholder = '4h'; input.setAttribute('aria-label', 'Original estimate'); save.type = 'button';
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); save.click(); } });   // not the Log time form
+  save.addEventListener('click', async () => {
+    save.disabled = true; setStatus('busy', 'Adding estimate…');
+    try {
+      const res = await fetch('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
+        body: JSON.stringify({ key, time: input.value }) });
+      const r = await res.json();
+      if (!res.ok) { setStatus('bad', r.error); return; }
+      setStatus('ok', `Estimate ${fmtH(r.seconds)} added to ${key}`);
+      await showTicketInfo(true);
+    } catch (err) { setStatus('bad', 'Hub is not running.'); } finally { save.disabled = false; }
+  });
+  est.append(input, save); box.append(est);
+}
+$('tmKey').addEventListener('change', () => { setStatus('', ''); showTicketInfo(); });
 $('tmLogForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const msg = $('tmLogMsg'), btn = e.submitter; msg.textContent = 'Logging…'; if (btn) btn.disabled = true;
+  const btn = e.submitter; setStatus('busy', 'Logging…'); if (btn) btn.disabled = true;
   try {
     const res = await fetch('/api/worklog', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
       body: JSON.stringify({ key: $('tmKey').value, time: $('tmHours').value, date: $('tmDate').value, comment: $('tmComment').value }) });
     const r = await res.json();
-    if (!res.ok) { msg.textContent = r.error; return; }
-    msg.textContent = `Logged ${fmtH(r.seconds)} on ${r.key}`;
+    if (!res.ok) { setStatus('bad', r.error); return; }
+    setStatus('ok', `Logged ${fmtH(r.seconds)} on ${r.key}`);
+    delete ticketInfo[r.key];
     $('tmHours').value = ''; $('tmComment').value = ''; markPreset();
     await loadTime(true);
-  } catch (err) { msg.textContent = 'Hub is not running.'; } finally { if (btn) btn.disabled = false; }
+  } catch (err) { setStatus('bad', 'Hub is not running.'); } finally { if (btn) btn.disabled = false; }
 });
-$('tmCopy').addEventListener('click', e => copyText(timeText, e.currentTarget));
 
 // Release notes
 let relText = '';
