@@ -233,6 +233,60 @@
   .spinner { width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--brand); border-radius:50%; animation:spin .8s linear infinite; display:inline-block; vertical-align:-2px; }
   @keyframes spin { to { transform:rotate(360deg); } }
 
+  /* Polish: page glow, loaders, tables, alerts */
+  body { background:radial-gradient(900px 340px at 75% -140px, var(--brand-bg), transparent 70%), var(--bg); background-attachment:fixed; }
+  .page-head h1 { background:linear-gradient(90deg, var(--fg), var(--brand) 140%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .panel, .kpi, .toolbar, details.parked { transition:box-shadow .2s, border-color .2s; }
+  .panel:hover { box-shadow:0 1px 2px rgba(25,23,38,.05), 0 16px 34px -18px rgba(91,60,196,.28); }
+  .panel-h { background:linear-gradient(180deg, var(--panel), var(--panel-2) 260%); }
+  .panel-h h2 { display:flex; align-items:center; gap:8px; }
+  .panel-h h2::before { content:""; width:4px; height:15px; border-radius:4px; background:linear-gradient(var(--brand-2), var(--brand)); }
+
+  /* Loading: a centred spinner with its label, wherever something is being fetched */
+  .spinner.lg { width:26px; height:26px; border-width:3px; }
+  .hint.busy, .hint.busy.pad { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:140px;
+    padding:28px 16px; color:var(--fg-2); font-weight:600; font-size:13.5px; text-align:center; }
+  .emptyst .spinner { display:block; margin:0 auto 10px; }
+
+  /* Tables */
+  th { border-bottom:1px solid var(--line); position:relative; }
+  th:first-child, td:first-child { padding-left:18px; }
+  th:last-child, td:last-child { padding-right:18px; }
+  td { transition:background .12s; }
+  tbody tr:not(.empty):hover td { background:color-mix(in srgb, var(--brand) 5%, var(--panel)); }
+  tbody tr:not(.empty):hover td:first-child { box-shadow:inset 3px 0 0 var(--brand); }
+  tbody tr:not(.empty) td .btn.sm { opacity:.55; transition:opacity .12s; }
+  tbody tr:not(.empty):hover td .btn.sm, tbody tr td .btn.sm:focus-visible { opacity:1; }
+  .pill { box-shadow:inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent); }
+  .chip { background:var(--bg); }
+
+  /* Alerts: banners with an icon, toasts that slide in and show how long they stay */
+  .err { border:1px solid color-mix(in srgb, var(--bad) 25%, transparent); border-left:4px solid var(--bad); padding:12px 16px; }
+  .err::before { content:"!"; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; flex:none;
+    background:var(--bad); color:#fff; font:800 13px var(--font); }
+  .err.pick { border-color:color-mix(in srgb, var(--brand) 25%, transparent); border-left-color:var(--brand); }
+  .err.form::before { display:none; }
+  .err.pick::before { content:"i"; background:var(--brand); font-family:Georgia, serif; font-style:italic; }
+  .toast { position:relative; overflow:hidden; padding:12px 16px 14px 46px; animation:toastIn .28s cubic-bezier(.2,.8,.3,1); }
+  .toast::before { content:""; position:absolute; left:14px; top:14px; width:20px; height:20px; border-radius:50%;
+    background:linear-gradient(135deg, var(--brand-2), var(--brand)); box-shadow:0 0 0 4px var(--brand-bg); }
+  .toast::after { content:""; position:absolute; left:0; bottom:0; height:3px; width:100%; background:var(--brand); opacity:.5;
+    transform-origin:left; animation:toastLife 10s linear forwards; }
+  .toast:hover { border-color:var(--brand); }
+  .toast b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  @keyframes toastIn { from { opacity:0; transform:translateY(12px) scale(.98); } }
+  @keyframes toastLife { to { transform:scaleX(0); } }
+
+  /* Log time: one-click comment options */
+  .presets { flex:1 1 520px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .presets .lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-right:2px; }
+  .preset { all:unset; cursor:pointer; font:600 12px var(--font); padding:4px 11px; border-radius:999px; border:1px solid var(--line);
+    background:var(--bg); color:var(--fg-2); transition:all .12s; }
+  .preset:hover { border-color:var(--brand); color:var(--brand); }
+  .preset[aria-pressed="true"] { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .preset:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce) { .toast, .toast::after { animation:none; } td, .panel { transition:none; } }
+
   @media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
   @media (max-width:700px) { .kpis, .kpis.four { grid-template-columns:1fr; } .day { grid-template-columns:72px minmax(0,1fr) 60px; } }
   @media (max-width:860px) {
@@ -396,7 +450,7 @@
       <div class="panel">
         <div class="tbl"><table>
           <thead><tr><th>Pull request</th><th>By</th><th>Waiting</th><th>Review</th><th></th></tr></thead>
-          <tbody id="prRows"><tr class="empty"><td colspan="5" class="emptyst">Loading…</td></tr></tbody>
+          <tbody id="prRows"><tr class="empty"><td colspan="5" class="emptyst"><span class="spinner lg"></span>Loading…</td></tr></tbody>
         </table></div>
       </div>
       <details class="parked" id="parked">
@@ -414,7 +468,7 @@
       <div class="panel">
         <div class="tbl"><table>
           <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
-          <tbody id="rows"><tr class="empty"><td colspan="4" class="emptyst">Loading…</td></tr></tbody>
+          <tbody id="rows"><tr class="empty"><td colspan="4" class="emptyst"><span class="spinner lg"></span>Loading…</td></tr></tbody>
         </table></div>
       </div>
     </section>
@@ -443,7 +497,9 @@
             <label class="field">Ticket<select id="tmKey"></select></label>
             <label class="field">Time<input id="tmHours" placeholder="2h 30m" autocomplete="off"></label>
             <label class="field">Date<input id="tmDate" type="date"></label>
-            <label class="field wide">Comment<input id="tmComment" placeholder="What you worked on" autocomplete="off"></label>
+            <label class="field wide">Comment<input id="tmComment" placeholder="What you worked on" autocomplete="off" list="tmCommentList"></label>
+            <datalist id="tmCommentList"></datalist>
+            <div class="presets" id="tmPresets" role="group" aria-label="Comment options"><span class="lbl">Quick comment</span></div>
             <button class="btn primary" type="submit">Log time</button>
             <span class="count" id="tmLogMsg"></span>
           </form>
@@ -528,9 +584,14 @@ function emptyRow(body, title, text, cols) {
   body.textContent = '';
   const tr = body.insertRow(); tr.className = 'empty';
   const td = tr.insertCell(); td.colSpan = cols; td.className = 'emptyst';
+  if (title.endsWith('…')) td.append(el('span', 'spinner lg'));   // still loading
   td.append(el('b', null, title)); if (text) td.append(text);
 }
-function emptyBox(box, title, text) { box.textContent = ''; const d = el('div', 'emptyst'); d.append(el('b', null, title), text || ''); box.append(d); }
+function emptyBox(box, title, text) {
+  box.textContent = ''; const d = el('div', 'emptyst');
+  if (title.endsWith('…') || String(text || '').endsWith('…')) d.append(el('span', 'spinner lg'));   // still loading
+  d.append(el('b', null, title), text || ''); box.append(d);
+}
 
 // Small inline icons built with DOM APIs (static path data only).
 const ICONS = {
@@ -955,13 +1016,14 @@ function render() {
 $('fixForm').addEventListener('submit', async e => {
   e.preventDefault();
   const key = $('fixKey').value.trim();
-  const msg = $('fixMsg'); msg.className = 'hint'; msg.textContent = '';
-  msg.append(el('span', 'spinner'), ' Checking…');
+  const msg = $('fixMsg'); msg.className = 'hint busy'; msg.textContent = '';
+  msg.append(el('span', 'spinner lg'), 'Looking up the ticket…');
   $('fixOut').hidden = true;
   let d;
   try {
     const res = await fetch('/api/fix?key=' + encodeURIComponent(key));
     d = await res.json();
+    msg.className = 'hint';
     if (!res.ok) { msg.className = 'hint err-t'; msg.textContent = d.error; return; }
   } catch (err) { msg.className = 'hint err-t'; msg.textContent = 'Hub is not running.'; return; }
   // Builds whose branch carries the ticket key (Z10-123, z10_123 ...), from the hub's 14 days of team builds.
@@ -1015,12 +1077,13 @@ $('myPrsAll').addEventListener('click', () => { $('fClear').click(); $('fWho').v
 
 // Tools: call a hub lookup, showing progress and errors in `msg`.
 async function tool(path, params, msg) {
-  msg.className = msg.className.replace(/\berr-t\b/, '').trim(); msg.textContent = ''; msg.append(el('span', 'spinner'), ' Working…');
+  msg.className = msg.className.replace(/\berr-t\b/, '').trim(); msg.textContent = ''; msg.classList.add('busy'); msg.append(el('span', 'spinner lg'), 'Working on it…');
   try {
     const res = await fetch(path + '?' + new URLSearchParams(params)), d = await res.json();
+    msg.classList.remove('busy');
     if (!res.ok) { msg.classList.add('err-t'); msg.textContent = d.error; return null; }
     msg.textContent = ''; return d;
-  } catch (e) { msg.classList.add('err-t'); msg.textContent = 'Hub is not running.'; return null; }
+  } catch (e) { msg.classList.remove('busy'); msg.classList.add('err-t'); msg.textContent = 'Hub is not running.'; return null; }
 }
 async function copyText(text, btn) {
   try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch (e) { btn.textContent = 'Select the text to copy'; }
@@ -1079,11 +1142,12 @@ async function loadTime(refresh) {
   if (!d || viewer() !== v) return;
   myTime = d;
   renderTime(d);
+  fillCommentList(d.entries || []);
   // Ask for a Jira API token (PC only) when: busy shared tickets have more than 20 logs (acli only returns the oldest 20),
   // the saved token stopped working, or there is no token yet and you're looking at your own time (needed to log time).
   const msg = $('tmMsg'); msg.textContent = '';
   if (!state.hosted && (d.partial.length || state.jiraNeedsToken || (!state.canLogTime && v === state.viewer))) {
-    const box = el('div', 'err pick');
+    const box = el('div', 'err pick form');
     if (state.jiraNeedsToken) box.append(el('b', null, 'Your Jira token stopped working'));
     box.style.display = 'grid'; box.style.gap = '6px'; box.style.marginTop = '10px';
     // Busy shared tickets need the Jira API (acli returns only 20 logs): just ask for the token.
@@ -1171,6 +1235,21 @@ function renderTime(d) {
   $('tmOut').hidden = false;
 }
 $('tmRefresh').addEventListener('click', () => loadTime(true));
+// Comment options: one click fills the comment; your recent comments are offered as you type.
+const COMMENT_PRESETS = ['Development', 'Bug fixing', 'Code review', 'Review comments fixes', 'Unit testing', 'Testing', 'QA support',
+  'Analysis', 'Investigation', 'Deployment', 'Documentation', 'Meeting', 'Daily stand-up', 'Knowledge transfer'];
+function markPreset() { [...$('tmPresets').querySelectorAll('.preset')].forEach(b => b.setAttribute('aria-pressed', String(b.textContent === $('tmComment').value))); }
+COMMENT_PRESETS.forEach(text => {
+  const b = el('button', 'preset', text); b.type = 'button'; b.setAttribute('aria-pressed', 'false');
+  b.addEventListener('click', () => { $('tmComment').value = $('tmComment').value === text ? '' : text; markPreset(); $('tmComment').focus(); });
+  $('tmPresets').append(b);
+});
+$('tmComment').addEventListener('input', markPreset);
+function fillCommentList(entries) {
+  const list = $('tmCommentList'); list.textContent = '';
+  [...entries.map(e => (e.comment || '').trim()).filter(c => c && c.length <= 120), ...COMMENT_PRESETS]
+    .filter((c, i, a) => a.indexOf(c) === i).slice(0, 25).forEach(c => { const o = el('option'); o.value = c; list.append(o); });
+}
 $('tmLogForm').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('tmLogMsg'), btn = e.submitter; msg.textContent = 'Logging…'; if (btn) btn.disabled = true;
@@ -1180,7 +1259,7 @@ $('tmLogForm').addEventListener('submit', async e => {
     const r = await res.json();
     if (!res.ok) { msg.textContent = r.error; return; }
     msg.textContent = `Logged ${fmtH(r.seconds)} on ${r.key}`;
-    $('tmHours').value = ''; $('tmComment').value = '';
+    $('tmHours').value = ''; $('tmComment').value = ''; markPreset();
     await loadTime(true);
   } catch (err) { msg.textContent = 'Hub is not running.'; } finally { if (btn) btn.disabled = false; }
 });
