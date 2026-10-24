@@ -29,7 +29,7 @@ Builds, PRs, review status, "where's my fix", standups, release notes and impact
 | Monday 10:00 (`staleNudgeTime`) | PR author | "You have 6 PRs with no activity for 30+ days. Close or update them", with the PRs |
 | When it happens | Branch author | "webstore Z10-41122: build failed" (also started / passed) |
 
-**Outlook and Teams in the morning brief (your PC, optional):** on Daily Scrum click **Connect Outlook** and paste your published calendar's ICS link (Outlook on the web > Settings > Calendar > Shared calendars > Publish a calendar, "Can view all details"). Click **Connect Teams** and paste a Workflows webhook link ("Post to a chat when a webhook request is received"). Both links stay in `%APPDATA%\MagicianHubrief.json`. The hub doesn't read your Teams messages (that needs an app registered by IT).
+**Outlook and Teams in the morning brief (your PC, optional):** on Daily Scrum click **Connect Outlook** and paste your published calendar's ICS link (Outlook on the web > Settings > Calendar > Shared calendars > Publish a calendar, "Can view all details"). Click **Connect Teams** and paste a Workflows webhook link ("Post to a chat when a webhook request is received"). Both links stay in `%APPDATA%\MagicianHub\brief.json`. The hub doesn't read your Teams messages (that needs an app registered by IT).
 
 **Teams nudge (optional, team server only):** set `TEAMS_WEBHOOK_URL` and the hub posts PRs that are ready to merge, have no reviewer, or have waited over 3 days, at each `nudgeTimes`.
 
