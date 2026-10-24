@@ -34,6 +34,7 @@ globalThis.fetch = async (url, opts) => {
   if (/\/rest\/api\/3\/issue\/[\w-]+\/worklog$/.test(url) && opts.method === 'POST') {
     const key = url.split('/issue/')[1].split('/')[0];
     if (key === 'Z10-404') return reply({}, 404);
+    if (key === 'Z10-400') return reply({ errorMessages: [], errors: { timeLogged: 'Cannot log work on a closed period.' } }, 400);
     worklogs.push({ key, ...JSON.parse(opts.body) });
     return reply({ id: '1' }, 201);
   }
@@ -304,6 +305,7 @@ test('log time: refuses bad input, the future, unknown tickets and other website
   assert.match((await postJson('/api/worklog', { key: 'not a key', time: '1h' })).body.error, /Pick a ticket/);
   assert.match((await postJson('/api/worklog', { key: 'Z10-2', time: '1h', date: '2999-01-01' })).body.error, /future/);
   assert.match((await postJson('/api/worklog', { key: 'Z10-404', time: '1h' })).body.error, /can't log time on Z10-404/);
+  assert.equal((await postJson('/api/worklog', { key: 'Z10-400', time: '1h' })).body.error, 'Jira did not accept it: Cannot log work on a closed period.');   // Jira's own reason
   assert.equal((await postJson('/api/worklog', { key: 'Z10-2', time: '1h' }, {})).status, 403);   // no hub header: another website
   assert.equal(worklogs.length, before);
 });

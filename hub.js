@@ -473,7 +473,14 @@ async function logWork({ key, time, date, comment }) {
   if ((comment || '').trim()) body.comment = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: comment.trim().slice(0, 2000) }] }] };
   const res = await fetch(`${new URL(cfg.jiraUrl).origin}/rest/api/3/issue/${key}/worklog`, {
     method: 'POST', headers: { Authorization: jiraBasic(), Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) return { error: res.status === 404 || res.status === 403 ? `You can't log time on ${key} (not found or no permission).` : `Jira answered ${res.status}. Try again.` };
+  if (!res.ok) {
+    // Jira says why (a required field, a closed period, time tracking off ...): pass its words on.
+    let why = '';
+    try { const j = await res.json(); why = [...(j.errorMessages || []), ...Object.values(j.errors || {})].join(' ').trim(); } catch (e) { /* no JSON body */ }
+    console.error(`Log time on ${key} failed: Jira ${res.status} ${why}`);
+    if (res.status === 404 || res.status === 403) return { error: `You can't log time on ${key} (not found or no permission).${why ? ' Jira: ' + why : ''}` };
+    return { error: why ? `Jira did not accept it: ${why}` : `Jira answered ${res.status}. Try again.` };
+  }
   timeCache.delete(jiraAuth.email);
   return { ok: true, key, seconds, day };
 }
