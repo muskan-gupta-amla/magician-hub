@@ -489,14 +489,17 @@ async function logWork({ key, time, date, comment }) {
 async function ticketTime(key) {
   if (HOSTED || JIRA_MODE !== 'api' || jiraNeedsToken) return { error: 'Connect your Jira API token on the Time page first.' };
   if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key || '')) return { error: 'Pick a ticket.' };
-  const res = await fetch(`${new URL(cfg.jiraUrl).origin}/rest/api/3/issue/${key}?fields=timetracking,issuetype,status&expand=editmeta`,
-    { headers: { Authorization: jiraBasic(), Accept: 'application/json' } });
+  const site = new URL(cfg.jiraUrl).origin, headers = { Authorization: jiraBasic(), Accept: 'application/json' };
+  const [res, perm] = await Promise.all([fetch(`${site}/rest/api/3/issue/${key}?fields=timetracking,issuetype,status&expand=editmeta`, { headers }),
+    fetch(`${site}/rest/api/3/mypermissions?issueKey=${key}&permissions=WORK_ON_ISSUES`, { headers })]);   // may you log time here?
   if (!res.ok) return { error: `Jira answered ${res.status} for ${key}.` };
   const j = await res.json(), f = j.fields || {}, t = f.timetracking || {};
+  let canLog = true;
+  try { canLog = perm.ok ? (await perm.json()).permissions.WORK_ON_ISSUES.havePermission !== false : true; } catch (e) { /* unknown: let Jira decide */ }
   return { key, type: f.issuetype ? f.issuetype.name : '', status: f.status ? f.status.name : '',
     estimate: t.originalEstimateSeconds == null ? null : t.originalEstimateSeconds, spent: t.timeSpentSeconds || 0,
     remaining: t.remainingEstimateSeconds == null ? null : t.remainingEstimateSeconds,
-    canSetEstimate: !!(j.editmeta && j.editmeta.fields && j.editmeta.fields.timetracking) };
+    canSetEstimate: !!(j.editmeta && j.editmeta.fields && j.editmeta.fields.timetracking), canLog };
 }
 
 // Set a ticket's Original Estimate (PC only, your own token), e.g. before logging time on it.

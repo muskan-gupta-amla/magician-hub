@@ -38,6 +38,9 @@ globalThis.fetch = async (url, opts) => {
     worklogs.push({ key, ...JSON.parse(opts.body) });
     return reply({ id: '1' }, 201);
   }
+  if (url.includes('/rest/api/3/mypermissions?issueKey=')) {   // Z10-32 is a Story where Jira doesn't let you log time
+    return reply({ permissions: { WORK_ON_ISSUES: { havePermission: !url.includes('issueKey=Z10-32&') } } });
+  }
   if (/\/rest\/api\/3\/issue\/Z10-(32|33)\?fields=timetracking/.test(url)) {   // one ticket's time, for the Log time form
     const estimated = url.includes('Z10-33');
     return reply({ key: 'Z10-32', fields: { issuetype: { name: estimated ? 'Task' : 'Story' }, status: { name: 'Analysis' },
@@ -323,9 +326,9 @@ test('log time: refuses bad input, the future, unknown tickets and other website
 
 test('log time form: estimate, logged and remaining for a ticket; add an estimate when it has none', async () => {
   assert.deepEqual((await api('/api/ticket-time', { key: 'z10-33' })).body,
-    { key: 'Z10-33', type: 'Task', status: 'Analysis', estimate: 28800, spent: 36000, remaining: 0, canSetEstimate: true });
+    { key: 'Z10-33', type: 'Task', status: 'Analysis', estimate: 28800, spent: 36000, remaining: 0, canSetEstimate: true, canLog: true });
   const none = (await api('/api/ticket-time', { key: 'Z10-32' })).body;
-  assert.deepEqual([none.estimate, none.spent, none.canSetEstimate], [null, 0, true]);
+  assert.deepEqual([none.estimate, none.spent, none.canSetEstimate, none.canLog], [null, 0, true, false]);   // Jira: no logging here
   assert.match((await postJson('/api/estimate', { key: 'Z10-32', time: 'soon' })).body.error, /like 4h/);
   assert.deepEqual((await postJson('/api/estimate', { key: 'Z10-32', time: '4h 30m' })).body, { ok: true, key: 'Z10-32', seconds: 16200 });
   assert.deepEqual(estimates.at(-1), { key: 'Z10-32', fields: { timetracking: { originalEstimate: '4h 30m' } } });
