@@ -306,10 +306,6 @@
   /* Log time: the chosen ticket's estimate, and the result of a log */
   .tkinfo { flex:1 0 100%; order:5; display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; font-size:12.5px; color:var(--fg-2); min-height:0; }
   .tkinfo:empty { display:none; }
-  .tkinfo .meter { flex:0 1 220px; height:6px; border-radius:99px; background:var(--panel-2); overflow:hidden; }
-  .tkinfo .meter i { display:block; height:100%; background:var(--ok); border-radius:99px; }
-  .tkinfo .meter.over i { background:var(--bad); }
-  .tkinfo b { color:var(--fg); }
   .tkinfo .est { display:inline-flex; gap:6px; align-items:center; }
   .tkinfo .est input { width:84px; font:500 13px var(--font); padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
   #tmLogForm .field, #tmLogForm .btn { order:1; } #tmLogForm .field.wide { order:2; } #tmLogForm .btn.primary, #tmLogForm .status { order:3; }
@@ -1324,30 +1320,23 @@ function fillCommentList(entries) {
   [...entries.map(e => (e.comment || '').trim()).filter(c => c && c.length <= 120), ...COMMENT_PRESETS]
     .filter((c, i, a) => a.indexOf(c) === i).slice(0, 25).forEach(c => { const o = el('option'); o.value = c; list.append(o); });
 }
-// The chosen ticket's estimate, logged and remaining, read from Jira when you pick it; add an estimate when it has none.
+// When the chosen ticket has no Original Estimate, offer to add one.
 const ticketInfo = {};
 const setStatus = (cls, text) => { const m = $('tmLogMsg'); m.className = 'status ' + cls; m.textContent = text; };
-const part = (label, value, cls) => { const sp = el('span', cls, label + ' '); sp.append(el('b', null, value)); return sp; };
 async function showTicketInfo(force) {
   const key = $('tmKey').value, box = $('tmTicketInfo');
   if (!key) { box.textContent = ''; return; }
   if (force || !ticketInfo[key]) {
-    box.textContent = ''; box.append(el('span', 'spinner'), el('span', 'muted', 'Reading ' + key + '…'));
+    box.textContent = '';
     try { ticketInfo[key] = await (await fetch('/api/ticket-time?key=' + encodeURIComponent(key))).json(); }
     catch (e) { ticketInfo[key] = { error: 'Hub is not running.' }; }
   }
   if ($('tmKey').value !== key) return;   // picked another ticket meanwhile
   const t = ticketInfo[key]; box.textContent = '';
-  if (t.error) { box.append(el('span', 'muted', t.error)); delete ticketInfo[key]; return; }
-  if (t.estimate) {
-    const over = t.spent > t.estimate, meter = el('div', 'meter' + (over ? ' over' : '')), fill = el('i');
-    fill.style.width = Math.min(100, t.spent / t.estimate * 100) + '%'; meter.append(fill);
-    box.append(meter, part('Estimate', fmtH(t.estimate)), part('Logged', fmtH(t.spent)),
-      over ? el('span', 'over', fmtH(t.spent - t.estimate) + ' over estimate') : part('Remaining', fmtH(t.remaining == null ? t.estimate - t.spent : t.remaining)));
-    return;
-  }
-  box.append(part('Logged', fmtH(t.spent)), el('span', 'muted', 'No original estimate on ' + key));
+  if (t.error) { delete ticketInfo[key]; return; }   // nothing to offer; logging still works
+  if (t.estimate) return;   // only tickets without an estimate need anything here
   if (!t.canSetEstimate) return;
+  box.append(el('span', 'muted', 'No original estimate on ' + key));
   const est = el('span', 'est'), input = el('input'), save = el('button', 'btn sm', 'Add estimate');
   input.placeholder = '4h'; input.setAttribute('aria-label', 'Original estimate'); save.type = 'button';
   input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); save.click(); } });   // not the Log time form
