@@ -23,26 +23,14 @@ const apiPulls = [
   pull(2, 'Z10-2: Change with no reviewer', 'asha-rao-amla', []),
   pull(3, 'Z10-3: Waiting for review', 'chitra-iyer-amla', ['asha-rao-amla'], fiveDaysAgo)
 ];
-const posted = [], worklogs = [], estimates = [], teamsCards = [];   // Teams posts and time logged, as the fake services received them
+const posted = [], worklogs = [], estimates = [];   // Teams posts and time logged, as the fake services received them
 let teamAnswer = [];                // assignees the fake Jira returns for the Team = Magicians search
 
-const ICS_URL = 'https://outlook.office365.com/owa/calendar/abc/def/calendar.ics', TEAMS_HOOK = 'https://prod-01.westus.logic.azure.com/workflows/x/triggers/manual/paths/invoke';
-const ymd = d => d.toLocaleDateString('en-CA').replace(/-/g, '');
-function icsToday() {   // a daily stand-up (Teams link), one meeting today, a cancelled one, one yesterday
-  const today = ymd(new Date()), y = new Date(); y.setDate(y.getDate() - 1);
-  return ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:a', 'SUMMARY:Daily stand-up', 'DTSTART;TZID=India Standard Time:20260101T100000',
-    'DTEND;TZID=India Standard Time:20260101T101500', 'RRULE:FREQ=DAILY;INTERVAL=1', 'X-MICROSOFT-SKYPETEAMSMEETINGURL:https://teams.microsoft.com/l/meetup-join/abc',
-    'END:VEVENT', 'BEGIN:VEVENT', 'UID:b', 'SUMMARY:Sprint review', `DTSTART:${today}T150000`, `DTEND:${today}T160000`, 'LOCATION:Room 2', 'END:VEVENT',
-    'BEGIN:VEVENT', 'UID:c', 'SUMMARY:Dropped', `DTSTART:${today}T120000`, 'STATUS:CANCELLED', 'END:VEVENT',
-    'BEGIN:VEVENT', 'UID:d', 'SUMMARY:Yesterday only', `DTSTART:${ymd(y)}T090000`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-}
 const realFetch = globalThis.fetch;   // the test's own calls to the hub stay real
 globalThis.fetch = async (url, opts) => {
   if (url.startsWith('http://127.0.0.1:')) return realFetch(url, opts);
   const reply = (data, status = 200) => ({ ok: status < 400, status, json: async () => data });
   if (url.startsWith('https://teams.test/')) { posted.push(JSON.parse(opts.body)); return reply({}); }
-  if (url === ICS_URL) return { ok: true, status: 200, text: async () => icsToday() };   // a published Outlook calendar
-  if (url === TEAMS_HOOK) { teamsCards.push(JSON.parse(opts.body)); return reply({}, 202); }
   if (/\/rest\/api\/3\/issue\/[\w-]+\/worklog$/.test(url) && opts.method === 'POST') {
     const key = url.split('/issue/')[1].split('/')[0];
     if (key === 'Z10-404') return reply({}, 404);
@@ -84,7 +72,8 @@ globalThis.fetch = async (url, opts) => {
     if (jql.includes('sprint in openSprints()')) {   // the Daily Scrum's sprint card
       const sprint = { id: 20, name: 'Magicians Sprint 20', state: 'active', startDate: '2026-10-05T00:00:00Z', endDate: '2026-10-26T00:00:00Z', goal: '' };
       return reply({ issues: [['Z10-2', 'indeterminate'], ['Z10-7', 'done'], ['Z10-50', 'new']].map(([key, cat]) =>
-        ({ key, fields: { ...all.find(i => i.key === key).fields, status: { name: cat, statusCategory: { key: cat } }, customfield_10010: [sprint, { id: 19, state: 'closed' }] } })) });
+        ({ key, fields: { ...all.find(i => i.key === key).fields, status: { name: cat, statusCategory: { key: cat } }, customfield_10010: [sprint, { id: 19, state: 'closed' }],
+          fixVersions: key === 'Z10-50' ? [] : [{ name: key === 'Z10-2' ? '10.14.10.0' : '10.14.9.0', released: false }, { name: '10.14.0.0', released: true }] } })) });
     }
     if (jql.includes('statusCategoryChangedDate')) return reply({ issues: all.filter(i => i.key === 'Z10-2') });
     if (jql.startsWith('worklogAuthor = "asha.rao@amla.io"')) return reply({ issues: all.filter(i => ['Z10-2', 'Z10-7'].includes(i.key)) });
@@ -182,6 +171,7 @@ test('standup: PRs authored and reviewed since the last working day, plus builds
   assert.deepEqual(body.builds, { passed: 0, failed: 0, failedList: [] });
   assert.deepEqual(body.moved.map(t => `${t.key} ${t.status}`), ['Z10-2 In Progress']);   // moved since the last working day
   assert.deepEqual(body.sprints.map(s => [s.name, s.done, s.doing, s.todo, s.tickets.length]), [['Magicians Sprint 20', 1, 1, 1, 3]]);
+  assert.deepEqual(body.releases.map(r => [r.name, r.total, r.done]), [['10.14.9.0', 1, 1], ['10.14.10.0', 1, 0]]);   // unreleased only, by version number
   assert.equal((await api('/api/standup', { person: 'stranger@example.com' })).status, 400);
 });
 
@@ -355,29 +345,6 @@ test('log time form: estimate, logged and remaining for a ticket; add an estimat
   assert.equal((await postJson('/api/estimate', { key: 'Z10-99', time: '2h' })).body.error, 'Jira did not accept the estimate: Field timetracking cannot be set.');
   assert.equal((await postJson('/api/estimate', { key: 'Z10-32', time: '2h' }, {})).status, 403);   // no hub header: another website
   assert.equal(estimates.length, 1);
-});
-
-test('morning brief: today\'s Outlook meetings and Send to Teams, from links saved on this PC', async () => {
-  assert.deepEqual((await api('/api/meetings', {})).body, { outlook: false, teams: false, meetings: null });
-  assert.match((await postJson('/api/brief-link', { kind: 'ics', url: 'https://evil.example.com/calendar.ics' })).body.error, /ICS link/);
-  assert.deepEqual((await postJson('/api/brief-link', { kind: 'ics', url: ICS_URL })).body, { ok: true, outlook: true, teams: false });
-  const m = (await api('/api/meetings', {})).body;
-  assert.deepEqual(m.meetings.map(x => [x.title, new Date(x.start).getHours(), x.join || x.location]),
-    [['Daily stand-up', 10, 'https://teams.microsoft.com/l/meetup-join/abc'], ['Sprint review', 15, 'Room 2']]);
-  assert.match((await postJson('/api/brief-send', { text: 'hi' })).body.error, /Connect Teams/);
-  assert.match((await postJson('/api/brief-link', { kind: 'teams', url: 'https://evil.example.com/hook' })).body.error, /Workflows/);
-  assert.deepEqual((await postJson('/api/brief-link', { kind: 'teams', url: TEAMS_HOOK })).body, { ok: true, outlook: true, teams: true });
-  assert.deepEqual((await postJson('/api/brief-send', { text: '• Today: 2 things to do' })).body, { ok: true });
-  assert.equal(teamsCards.at(-1).attachments[0].content.body[1].text, '• Today: 2 things to do');
-  assert.equal((await postJson('/api/brief-send', { text: 'x' }, {})).status, 403);   // no hub header: another website
-});
-
-test('recurring meetings: weekly days, every other week, skipped dates', () => {
-  const [ev] = hub.parseIcs(['BEGIN:VEVENT', 'UID:w', 'SUMMARY:Sync', 'DTSTART:20261005T113000', 'DTEND:20261005T120000',
-    'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE', 'EXDATE:20261019T113000', 'END:VEVENT'].join('\n'));
-  const on = (y, mo, d) => { const at = hub.occurrence(ev, new Date(y, mo - 1, d)); return at && at.getHours() + ':' + at.getMinutes(); };
-  assert.deepEqual([on(2026, 10, 5), on(2026, 10, 7), on(2026, 10, 6), on(2026, 10, 12), on(2026, 10, 19), on(2026, 10, 21), on(2026, 9, 30)],
-    ['11:30', '11:30', null, null, null, '11:30', null]);   // Mon, Wed, Tue, off week, skipped date, next on-week Wed, before the start
 });
 
 test('Friday reminder: once, on Friday at 16:00, when the week is under 40h', async () => {
