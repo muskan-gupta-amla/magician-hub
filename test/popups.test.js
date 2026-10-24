@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const hub = require('../hub.js');
 
 const OWNER = 'MRRSoft', API = 'znode10-api-migration', ADMIN = 'znode10-admin-migration';
-const world = { runs: [], adminPulls: [], reviews: {} };   // what the fake GitHub returns right now
+const world = { runs: [], adminPulls: [], reviews: {}, deploys: [] };   // deploys: runs in the DevOps repo   // what the fake GitHub returns right now
 
 const run = (id, status, conclusion, branch, who = 'asha-rao-amla', email = 'asha.rao@amla.io') => ({
   id, status, conclusion, head_branch: branch, name: 'Build and Test', event: 'push',
@@ -29,7 +29,13 @@ globalThis.fetch = async (url, opts = {}) => {
   const p = new URL(url).pathname;
   const reply = data => ({ ok: true, status: 200, json: async () => data });
   if (loginExpired && opts.headers && opts.headers.Authorization === 'Bearer test') return { ok: false, status: 401, json: async () => ({}) };
+  if (p.includes('/znode10-graphql-modular/')) return { ok: false, status: 404, json: async () => ({ message: 'Not Found' }) };   // a repo this login can't see: skipped, never fatal
   let m;
+  if ((m = /\/actions\/runs\/(\d+)\/jobs$/.exec(p)) && +m[1] >= 700) {   // a deploy: its jobs name the services it built
+    return reply({ jobs: [{ name: 'trigger-build-deploy / parse_services', conclusion: 'success' },
+      { name: 'trigger-build-deploy / build_services (admin, MRRSoft/znode10-admin-migration, ./Znode.Admin, docker-compose.yml) / build', conclusion: world.deploys.find(r => r.id === +m[1]).conclusion },
+      { name: 'trigger-build-deploy / build_services (api, MRRSoft/znode10-api-migration, ./Znode.Multifront, docker-compose.yml) / build', conclusion: 'success' }] });
+  }
   if ((m = /\/actions\/runs\/(\d+)\/jobs$/.exec(p))) {
     return reply({ jobs: [{ id: 9001, conclusion: 'failure', steps: [{ name: 'Build', conclusion: 'failure' }] }] });
   }
@@ -38,7 +44,7 @@ globalThis.fetch = async (url, opts = {}) => {
       message: "CS0103: The name 'portalId' does not exist in the current context" }]);
   }
   if ((m = /\/repos\/[^/]+\/([^/]+)\/actions\/runs\/(\d+)$/.exec(p))) return reply(world.runs.find(r => r.id === +m[2]));
-  if ((m = /\/repos\/[^/]+\/([^/]+)\/actions\/runs$/.exec(p))) return reply({ workflow_runs: m[1] === API ? world.runs : [] });
+  if ((m = /\/repos\/[^/]+\/([^/]+)\/actions\/runs$/.exec(p))) return reply({ workflow_runs: m[1] === API ? world.runs : m[1] === 'znode10-teams-devops' ? world.deploys : [] });
   if ((m = /\/repos\/[^/]+\/([^/]+)\/pulls$/.exec(p))) return reply(m[1] === ADMIN ? world.adminPulls : []);
   if ((m = /\/pulls\/(\d+)\/reviews$/.exec(p))) return reply(world.reviews[m[1]] || []);
   throw new Error('Unexpected GitHub call in test: ' + p);
@@ -134,4 +140,18 @@ test('the same review request is not announced twice; a new reviewer is', async 
   world.adminPulls = [teammatePr(['asha-rao-amla', 'ben-kumar-amla'])];
   assert.deepEqual(await step(), []);   // Ben's request: an event for Ben, no Windows popup for you
   assert.equal(hub.state().events.at(-1).person, 'ben.kumar@amla.io');
+});
+
+test('environment deploys: what was deployed, by whom; a popup when your deploy fails', async () => {
+  const deploy = (id, env, status, conclusion, who) => ({ id, name: `Trigger - Z10 ${env}`, status, conclusion, html_url: `https://github.com/${OWNER}/znode10-teams-devops/actions/runs/${id}`,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(), triggering_actor: { login: who }, actor: { login: who } });
+  world.deploys = [deploy(701, 'DEV4', 'in_progress', null, 'asha-rao-amla'), deploy(702, 'DEV10', 'completed', 'success', 'someone-else-amla'),
+    { ...deploy(703, 'X', 'completed', 'success', 'asha-rao-amla'), name: 'Mongo TTL Monitoring' }];
+  assert.deepEqual(await step(), []);   // started: no popup
+  const dev4 = hub.state().deploys.find(x => x.id === 701);
+  assert.deepEqual([dev4.env, dev4.who, dev4.services.map(x => x.code)], ['DEV4', 'asha.rao@amla.io', ['admin', 'api']]);
+  assert.equal(hub.state().deploys.find(x => x.id === 702).who, 'someone-else-amla');   // anyone's deploy is shown
+  assert.ok(!hub.state().deploys.some(x => x.id === 703));   // not a deploy workflow
+  Object.assign(world.deploys[0], { status: 'completed', conclusion: 'failure' });
+  assert.deepEqual(await step(), ['DEV4: deploy failed | admin, api · admin build failed']);
 });

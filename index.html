@@ -344,6 +344,19 @@
   .brief .pt { display:grid; grid-template-columns:30px minmax(0,1fr); gap:10px; align-items:center; font-size:13.5px; color:var(--fg-2); }
   .brief .pt .tag { width:30px; height:30px; border-radius:9px; }
   .brief .pt b { color:var(--fg); font-weight:700; }
+  /* Builds: environments and who is working on what */
+  .envs { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; padding:14px 16px; }
+  .env { border:1px solid var(--line); border-radius:14px; padding:12px 14px; display:grid; gap:8px; background:var(--panel); align-content:start; }
+  .env.bad { border-color:color-mix(in srgb, var(--bad) 45%, transparent); }
+  .env .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .env .top b { font:800 16px var(--font); letter-spacing:.02em; }
+  .env .svc { display:flex; flex-wrap:wrap; gap:4px; }
+  .env .by { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--fg-2); }
+  .env .by .av { width:20px; height:20px; font-size:9px; }
+  .env .err-line { font:12px/1.4 var(--mono); color:var(--bad); }
+  .env .prev { font-size:11.5px; color:var(--muted); }
+  .nowlist { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
+  .nowlist .li { border-right:1px solid var(--line-2); }
   .scrum3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
   .scrum3 .col { border-top:3px solid var(--line); }
   .scrum3 .col.y { border-top-color:var(--ok); } .scrum3 .col.t { border-top-color:var(--brand); } .scrum3 .col.b { border-top-color:var(--warn); }
@@ -547,7 +560,15 @@
     </section>
 
     <!-- Builds -->
-    <section data-view="builds" hidden>
+    <section data-view="builds" class="stack" hidden>
+      <div class="panel">
+        <div class="panel-h"><h2>Environments</h2><span class="muted">latest deploy on each, by anyone</span></div>
+        <div class="envs" id="envs"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Who's working on what</h2><span class="muted">team, last 24 hours</span></div>
+        <div class="nowlist" id="teamNow"></div>
+      </div>
       <div class="panel">
         <div class="tbl"><table>
           <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
@@ -747,7 +768,7 @@ const VIEWS = {
   overview: ['Overview', 'What needs you today'],
   fix: ['Ticket lookup', 'PRs, builds and branches for one ticket'],
   prs: ['Team PRs', 'Open pull requests'],
-  builds: ['Builds', 'GitHub Actions runs'],
+  builds: ['Builds', 'Environments, who is working on what, and team builds'],
   standup: ['Daily Scrum', 'Yesterday, today and blockers, from GitHub and Jira'],
   time: ['Time Log', 'Log time in Jira, and see what is left today'],
   release: ['Release notes', 'Tickets between two tags or branches'],
@@ -1118,6 +1139,44 @@ function render() {
   if (!f.runs.length) emptyRow(body, active ? 'No builds match these filters' : 'No builds yet', active ? 'Try clearing a filter.' : '', 4);
   else body.textContent = '';
   for (const r of f.runs) buildRow(body, r);
+  renderEnvs(d); renderTeamNow(d);
+}
+
+// Environments: the latest deploy on each (DEV4, DEV10, INT ...), what it built, who started it.
+const SERVICES = { api: 'API', v2: 'API v2', admin: 'Admin', wbst: 'Webstore', pgbld: 'Page builder', bstore: 'B Store', db: 'DB' };
+const svcName = c => SERVICES[c] || c;
+function renderEnvs(d) {
+  const box = $('envs'); box.textContent = '';
+  const envs = d.deployEnvs || [], all = d.deploys || [];
+  envs.forEach(env => {
+    const list = all.filter(x => x.env === env), last = list[0], card = el('div', 'env' + (last && runState(last) === 'failure' ? ' bad' : '')), top = el('div', 'top');
+    top.append(el('b', null, env), last ? statePill(last) : pill('No deploys', 's-off'));
+    card.append(top);
+    if (last) {
+      const svc = el('div', 'svc'); (last.services.length ? last.services : [{ code: 'deploy' }]).forEach(x => { const c = el('span', 'chip', svcName(x.code)); if (x.repo) c.title = x.repo; svc.append(c); });
+      const by = el('div', 'by'); by.append(avatar(last.who), `${personName(last.who)} · ${ago(last.at)}`);
+      card.append(svc, by);
+      if (last.failed) card.append(el('div', 'err-line', last.failed));
+      const day = list.filter(x => Date.now() - new Date(x.at) < DAY).length;
+      if (list.length > 1) card.append(el('div', 'prev', `${day} deploy${day === 1 ? '' : 's'} in 24h · before: ${personName(list[1].who)} ${ago(list[1].at)}`));
+    } else card.append(el('div', 'prev', `None in the last ${3} days`));
+    box.append(card);
+  });
+  $('envs').closest('.panel').hidden = !envs.length;
+}
+
+// Who's working on what: each teammate's latest build, deploy or PR update in the last 24 hours.
+function renderTeamNow(d) {
+  const box = $('teamNow'); box.textContent = '';
+  const since = Date.now() - DAY, latest = {};
+  const keep = (person, at, text, url) => { if (new Date(at) < since || !d.team.includes(person)) return; if (!latest[person] || latest[person].at < at) latest[person] = { at, text, url }; };
+  d.runs.forEach(r => keep(r.author, r.updated, `${runState(r) === 'running' ? 'Building' : 'Built'} ${shortRepo(r.repo)} · ${r.branch}`, r.url));
+  (d.deploys || []).forEach(x => keep(x.who, x.at, `Deployed ${x.services.map(s => svcName(s.code)).join(', ') || 'to'} ${x.services.length ? 'to ' : ''}${x.env}`, x.url));
+  const byLogin = login => d.team.find(e => login.toLowerCase().startsWith(e.split('@')[0].replace(/\./g, '-')));
+  d.prs.forEach(p => { const person = byLogin(p.author); if (person) keep(person, p.updated, `PR ${shortRepo(p.repo)} #${p.number} · ${p.title}`, p.url); });
+  const people = Object.entries(latest).sort((a, b) => b[1].at.localeCompare(a[1].at));
+  people.forEach(([person, x]) => listItem(box, avatar(person), personName(person), x.text, ago(x.at), x.url));
+  if (!people.length) emptyBox(box, 'Quiet day', 'No team builds, deploys or PR updates in the last 24 hours.');
 }
 
 $('fixForm').addEventListener('submit', async e => {

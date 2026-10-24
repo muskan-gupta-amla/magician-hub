@@ -4,7 +4,10 @@
     "znode-webstore10x-page-builder",
     "znode10-admin-migration",
     "znode10-api-migration",
-    "znode10-multifront-db"
+    "znode10-multifront-db",
+    "znode10-graphql-bstore",
+    "znode10-graphql-modular",
+    "znode10-commerceportal-api"
   ],
   "email": "",
   "teamField": "cf[10117]",
@@ -20,6 +23,9 @@
   "ticketPrefixes": ["Z10", "Z10LMC", "KZI", "KLRT"],
   "nudgeTimes": ["10:00", "16:00"],
   "trackBranches": ["int", "qat", "dev4", "dev10", "v10.14.0.0-hotfixes"],
+  "deployRepo": "znode10-teams-devops",
+  "deployEnvs": ["DEV4", "DEV10", "INT", "QA", "HX"],
+  "deployDays": 3,
   "staleDays": 30,
   "buildDays": 14,
   "weekHours": 40,

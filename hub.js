@@ -128,10 +128,17 @@ async function ghAll(url, maxPages, pick = x => x) {
   return all;
 }
 
+// A repo this login can't see (GitHub 404) is skipped with one log line, so it never stops the other repos.
+const missingRepos = new Set();
+const skipMissing = repo => e => {
+  if (!/GitHub 404 /.test(e.message)) throw e;
+  if (!missingRepos.has(repo)) console.error(`Skipping ${repo}: not found, or this GitHub login has no access`);
+  missingRepos.add(repo); return [];
+};
 async function pollRepo(repo) {
   // The full window on start, then only the newest page each poll.
   const since = encodeURIComponent('>=' + buildSince().slice(0, 10));
-  const list = await ghAll(`/repos/${cfg.owner}/${repo}/actions/runs?created=${since}`, seeded ? 1 : 20, x => x.workflow_runs);
+  const list = await ghAll(`/repos/${cfg.owner}/${repo}/actions/runs?created=${since}`, seeded ? 1 : 20, x => x.workflow_runs).catch(skipMissing(repo));
   // Runs still in progress that have dropped off the newest page.
   const seen = new Set(list.map(r => r.id));
   for (const run of [...runs.values()]) {
@@ -161,6 +168,42 @@ async function pollRepo(repo) {
 }
 
 const shortRepo = r => r.replace(/^znode(10)?-/, '').replace(/-migration$|10x-page-builder$|^multifront-/, '');   // znode10-api-migration -> api
+// Environment deploys: the "Trigger - Z10 <ENV>" workflows in the DevOps repo (DEV4, DEV10, INT ...), started by anyone.
+// Each run's job names say what it built: "build_services (admin, MRRSoft/znode10-admin-migration, ...)".
+const deploys = new Map();   // run id -> deploy
+const DEPLOY_RE = /^Trigger - Z10 (\w+)$/i;
+async function pollDeploys() {
+  if (!cfg.deployRepo) return;
+  const since = new Date(Date.now() - (cfg.deployDays || 3) * 86400000).toISOString(), envs = (cfg.deployEnvs || []).map(e => e.toUpperCase());
+  const list = (await ghAll(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs?created=${encodeURIComponent('>=' + since.slice(0, 10))}`, seeded ? 1 : 6, x => x.workflow_runs))
+    .filter(r => DEPLOY_RE.test(r.name || '') && (!envs.length || envs.includes(DEPLOY_RE.exec(r.name)[1].toUpperCase())));
+  const seen = {};   // the newest few per environment get their services read (one call each, once they finish)
+  for (const r of list.sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+    const env = DEPLOY_RE.exec(r.name)[1].toUpperCase(), prev = deploys.get(r.id);
+    seen[env] = (seen[env] || 0) + 1;
+    if (prev && prev.status === 'completed') continue;
+    const login = (r.triggering_actor || r.actor || {}).login || '';
+    const d = { id: r.id, env, who: teamByLogin(login) || login, status: r.status, conclusion: r.conclusion, url: r.html_url, at: r.created_at, updated: r.updated_at,
+      services: prev ? prev.services : [], failed: '' };
+    if (seen[env] <= 5) {
+      const jobs = ((await gh(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs/${r.id}/jobs?per_page=50`).catch(() => null)) || {}).jobs || [];
+      const svc = new Map();
+      jobs.forEach(j => { const m = /build_services\w* \(([^,]+), [^/]+\/([^,)]+)/.exec(j.name); if (m && !svc.has(m[1])) svc.set(m[1], { code: m[1].trim(), repo: m[2].trim() }); });
+      d.services = [...svc.values()];
+      const bad = jobs.find(j => j.conclusion === 'failure');
+      const badSvc = bad && /build_services\w* \(([^,]+)/.exec(bad.name);
+      if (bad) d.failed = badSvc ? `${badSvc[1].trim()} build failed` : bad.name.replace(/^[^/]*\/\s*/, '');
+    }
+    deploys.set(r.id, d);
+    // Your deploy finished: popup for whoever started it (team members only)
+    if (seeded && prev && prev.status !== 'completed' && r.status === 'completed' && team.has(d.who)) {
+      notify(d.who, `${env}: deploy ${{ success: 'passed', failure: 'failed' }[r.conclusion] || (r.conclusion || '').replace('_', ' ')}`,
+        d.services.map(x => x.code).join(', ') + (d.failed ? ` · ${d.failed}` : ''), r.html_url);
+    }
+  }
+  for (const [id, d] of deploys) if (d.at < since) deploys.delete(id);
+}
+
 const search = q => gh(`/search/issues?per_page=50&q=${encodeURIComponent(`${q} org:${cfg.owner}`)}`);
 
 function prSummary(p, repo) {
@@ -219,7 +262,7 @@ async function addReviewStatus(list) {
 
 async function pollPrs() {
   const lists = await Promise.all(cfg.repos.map(async repo =>
-    (await ghAll(`/repos/${cfg.owner}/${repo}/pulls?state=open`, 10)).map(p => {
+    (await ghAll(`/repos/${cfg.owner}/${repo}/pulls?state=open`, 10).catch(skipMissing(repo))).map(p => {
       const pr = { ...prSummary(p, repo), base: p.base.ref, head: p.head.ref, updated: p.updated_at,
         reviewers: p.requested_reviewers.map(u => u.login) };
       pr.parked = parkedReason(pr);
@@ -900,6 +943,7 @@ async function poll() {
   polling = true;
   try {
     await Promise.all(cfg.repos.map(pollRepo));
+    await pollDeploys().catch(e => console.error('Deploys:', e.message));   // own errors; never stops the builds
     await pollPrs();
     if (JIRA_MODE && Date.now() - lastJira > (cfg.jiraPollSeconds || 300) * 1000) await pollJira();   // own errors; never stops GitHub
     // Keep the page list short and recent.
@@ -971,6 +1015,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { hosted: HOSTED, viewer, signedIn: !!signedIn, team: [...team].sort(), repos: cfg.repos, owner: cfg.owner,
       jira: cfg.jiraUrl, links: cfg.links, ticketPrefixes: cfg.ticketPrefixes, jiraOn: !!JIRA_MODE && !jiraError && lastJira > 0, jiraError, jiraNeedsToken, jiraKeys,
       teamInfo, canLogTime: !HOSTED && JIRA_MODE === 'api' && !jiraNeedsToken ? jiraAuth.email : null,   // whose time a "Log" writes
+      deployEnvs: cfg.deployEnvs || [], deploys: [...deploys.values()].sort((a, b) => b.at.localeCompare(a.at)),
       lastPoll, lastError, runs: list, prs, requests, events });
   }
   const q = name => (url.searchParams.get(name) || '').trim();
@@ -1013,7 +1058,7 @@ const server = http.createServer(async (req, res) => {
 // Used by test/popups.test.js; starting the hub (node hub.js) is below.
 module.exports = { poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
   setSession: s => { token = s.token; email = s.email; },
-  state: () => ({ runs: [...runs.values()], prs, requests, lastError, events }) };
+  state: () => ({ runs: [...runs.values()], deploys: [...deploys.values()], prs, requests, lastError, events }) };
 
 if (require.main === module) (async () => {
   if (process.argv.includes('--test-popup')) return popup('Magician Hub', 'Popups are working.');
