@@ -319,6 +319,36 @@
   .sprint .keys { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--fg-2); }
   .sprint .keys span { display:inline-flex; align-items:center; gap:5px; }
   .sprint .keys i { width:8px; height:8px; border-radius:2px; }
+  .tlist { display:grid; gap:2px; border-top:1px dashed var(--line); padding-top:8px; }
+  .trow { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; padding:4px 6px; border-radius:8px;
+    text-decoration:none; color:var(--fg); font-size:12.5px; }
+  .trow:hover { background:var(--panel-2); }
+  .trow .mono { font-size:11.5px; color:var(--fg); }
+  .trow .ts { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--fg-2); }
+  .trow .pill { font-size:10.5px; padding:2px 8px; }
+  .tlist:not(.all) .trow.more { display:none; }
+  .linkbtn { all:unset; cursor:pointer; color:var(--brand); font-weight:700; font-size:12px; justify-self:start; }
+  .linkbtn:focus-visible { outline:2px solid var(--brand); outline-offset:2px; border-radius:4px; }
+
+  /* Morning brief */
+  .brief { background:linear-gradient(135deg, var(--brand-bg), var(--panel) 65%); border:1px solid var(--line); border-radius:18px;
+    padding:20px 22px; box-shadow:var(--shadow); display:grid; gap:14px; }
+  .brief .hello { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; }
+  .brief h2 { margin:0; font-size:20px; font-weight:800; letter-spacing:-.01em; }
+  .brief .date { color:var(--muted); font-size:13px; }
+  .brief .pts { display:grid; gap:9px; }
+  .brief .pt { display:grid; grid-template-columns:30px minmax(0,1fr); gap:10px; align-items:center; font-size:13.5px; color:var(--fg-2); }
+  .brief .pt .tag { width:30px; height:30px; border-radius:9px; }
+  .brief .pt b { color:var(--fg); font-weight:700; }
+  .meets { display:flex; gap:8px; flex-wrap:wrap; }
+  .meet { display:grid; gap:2px; padding:8px 12px; border:1px solid var(--line); border-radius:12px; background:var(--panel); min-width:170px; max-width:260px; font-size:12.5px; }
+  .meet time { font:600 12px var(--mono); color:var(--brand); }
+  .meet .mt { font-weight:700; color:var(--fg); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .meet.past { opacity:.55; }
+  .meet a { font-weight:700; font-size:12px; text-decoration:none; }
+  .connect { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:12.5px; padding:12px; border:1px dashed var(--line); border-radius:12px; background:var(--panel); }
+  .connect input { flex:1; min-width:240px; font:500 13px var(--mono); padding:7px 10px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+  .connect .help { flex:1 0 100%; color:var(--muted); }
   .scrum3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
   .scrum3 .col { border-top:3px solid var(--line); }
   .scrum3 .col.y { border-top-color:var(--ok); } .scrum3 .col.t { border-top-color:var(--brand); } .scrum3 .col.b { border-top-color:var(--warn); }
@@ -539,6 +569,7 @@
         <div class="hint pad" id="suMsg"></div>
       </div>
       <div id="suOut" class="stack" hidden>
+        <div class="brief" id="suBrief"></div>
         <div class="sprints" id="suSprints"></div>
         <div class="kpis four">
           <div class="kpi" id="su-prs"><div class="top">PRs worked on</div><div class="n">–</div><div class="sub"></div></div>
@@ -1182,7 +1213,8 @@ async function loadStandup() {
   if (!v) { $('suMsg').textContent = 'Pick your name at the top right first.'; $('suOut').hidden = true; return; }
   const timeReady = !(myTime && myTime.person === v) && state && state.jiraOn
     ? fetch('/api/time?' + new URLSearchParams({ person: v })).then(r => r.ok ? r.json() : null).then(t => { if (t) myTime = t; }).catch(() => {}) : null;
-  const [d] = await Promise.all([tool('/api/standup', { person: v }, $('suMsg')), loadMyJira(), timeReady]);   // Jira feeds "Today" and time logged
+  const meetings = state.hosted || v !== state.viewer ? null : fetch('/api/meetings').then(r => r.json()).catch(() => null);   // your own Outlook, PC only
+  const [d, , , cal] = await Promise.all([tool('/api/standup', { person: v }, $('suMsg')), loadMyJira(), timeReady, meetings]);   // Jira feeds "Today" and time logged
   if (!d || viewer() !== v) return;
   const mine = state.prs.filter(p => isMe(p.author) && !whyParked(p)), Y = [], T = [], B = [];
   const pr = p => `${shortRepo(p.repo)} #${p.number}`, age = p => Math.floor((Date.now() - new Date(p.created)) / DAY);
@@ -1233,7 +1265,17 @@ async function loadStandup() {
       const k = el('span'), dot = el('i'); dot.style.background = color; k.append(dot, `${n} ${label}`); keys.append(k);
     });
     const tb = el('div', 'timebar'), ti = el('i'); ti.style.width = timePct + '%'; tb.title = `${Math.round(timePct)}% of the sprint has passed`; tb.append(ti);
-    card.append(top, big, bar, tb, keys); sprints.append(card);
+    const order = { indeterminate: 0, new: 1, done: 2 }, list = el('div', 'tlist');
+    [...sp.tickets].sort((a, b) => (order[a.cat] ?? 1) - (order[b.cat] ?? 1)).forEach((t, i) => {
+      const row = link('', jiraUrl(t.key), 'trow' + (i >= 5 ? ' more' : '')); row.title = `${t.key} · ${t.summary}`;
+      row.append(el('span', 'mono', t.key), el('span', 'ts', t.summary), pill(t.status, JIRA_CAT[t.cat] || 's-off')); list.append(row);
+    });
+    card.append(top, big, bar, tb, keys, list);
+    if (sp.tickets.length > 5) {
+      const more = el('button', 'linkbtn', `Show all ${sp.tickets.length} tickets`); more.type = 'button';
+      more.onclick = () => { list.classList.add('all'); more.remove(); }; card.append(more);
+    }
+    sprints.append(card);
   });
   sprints.hidden = !(d.sprints || []).length;
   // Numbers
@@ -1256,6 +1298,92 @@ async function loadStandup() {
   const lines = list => list.length ? list.map(i => '• ' + i.text) : ['• None'];
   const head = (d.sprints || []).slice(0, 1).map(sp => `${sp.name}: ${sp.done}/${sp.done + sp.doing + sp.todo} of my tickets done`);
   scrumText = [...head, ...(head.length ? [''] : []), `Yesterday (since ${since})`, ...lines(Y), '', 'Today', ...lines(T), '', 'Blockers', ...lines(B)].join('\n');
+  renderBrief(v, d, { Y, T, B, loggedSec, since }, cal);
+}
+
+// Morning brief: one glance at yesterday, today, the sprint and today's meetings; Outlook and Teams are connected once, on this PC.
+let briefText = '';
+function renderBrief(v, d, x, cal) {
+  const box = $('suBrief'); box.textContent = '';
+  const now = new Date(), hour = now.getHours(), first = personName(v).split(' ')[0];
+  const hello = el('div', 'hello'), h = el('div'), actions = el('div', 'row');
+  h.append(el('h2', null, `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${first}`),
+    el('div', 'date', now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })));
+  hello.append(h, actions); box.append(hello);
+  const pts = el('div', 'pts'), point = (cls, ic, ...parts) => { const p = el('div', 'pt'), t = el('div'); t.append(...parts); p.append(tag(cls, ic), t); pts.append(p); };
+  const B = (text) => el('b', null, text), n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  // Yesterday
+  const merged = d.authored.filter(p => p.state === 'merged').length, moved = (d.moved || []).length;
+  const did = [d.authored.length && n(d.authored.length, 'PR', 'PRs') + (merged ? ` (${merged} merged)` : ''), d.reviewed.length && n(d.reviewed.length, 'review', 'reviews'),
+    moved && n(moved, 'ticket moved', 'tickets moved'), x.loggedSec && fmtH(x.loggedSec) + ' logged'].filter(Boolean);
+  point('ok', 'check', B(`Since ${x.since}: `), did.length ? did.join(' · ') : 'no activity on GitHub or Jira');
+  // Today
+  point('brand', 'arrow', B('Today: '), x.T.length ? `${n(x.T.length, 'thing', 'things')} to do, first: ${x.T[0].title}` : 'nothing queued yet');
+  if (x.B.length) point('warn', 'alert', B('Blocked: '), x.B.map(b => b.title).slice(0, 2).join(' · ') + (x.B.length > 2 ? ` and ${x.B.length - 2} more` : ''));
+  // Sprint
+  const sp = (d.sprints || [])[0];
+  if (sp) {
+    const left = Math.ceil((new Date(sp.end) - now) / DAY), open = sp.doing + sp.todo;
+    point('info', 'clock', B(sp.name + ': '), `${left > 0 ? `ends in ${n(left, 'day', 'days')}` : 'ends today'} · ${open ? `${open} of your ${sp.done + open} tickets still open` : 'all your tickets done'}`);
+  }
+  // Meetings (Outlook)
+  const meets = cal && cal.meetings;
+  if (meets) {
+    const timed = meets.filter(m => !m.allDay), next = timed.find(m => new Date(m.end) > now);
+    const t = (m) => new Date(m.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    point('brand', 'user', B('Meetings: '), timed.length ? `${n(timed.length, 'meeting', 'meetings')} today${next ? `, next at ${t(next)}: ${next.title}` : ', all done'}` : 'no meetings today');
+    if (timed.length) {
+      const row = el('div', 'meets');
+      timed.forEach(m => {
+        const card = el('div', 'meet' + (new Date(m.end) < now ? ' past' : '')), when = el('time', null, `${t(m)} – ${new Date(m.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+        card.append(when, el('span', 'mt', m.title));
+        if (m.join) card.append(link('Join in Teams', m.join)); else if (m.location) card.append(el('span', 'muted', m.location));
+        row.append(card);
+      });
+      pts.append(row);
+    }
+  } else if (cal && cal.error) point('bad', 'alert', B('Outlook: '), cal.error);
+  box.append(pts);
+  // Text for Teams: the brief, then the full scrum
+  briefText = [...[...pts.querySelectorAll('.pt')].map(p => '• ' + p.textContent), '', scrumText].join('\n');
+  // Connect / send (your own PC only)
+  if (!cal) return;
+  const connectBox = (kind, label, placeholder, help) => {
+    const b = el('button', 'btn sm', label); b.type = 'button';
+    b.onclick = () => {
+      box.querySelectorAll('.connect').forEach(c => c.remove());
+      const f = el('form', 'connect'), input = el('input'), save = el('button', 'btn primary sm', 'Save'), note = el('span', 'muted');
+      input.placeholder = placeholder; input.setAttribute('aria-label', label); save.type = 'submit';
+      f.append(input, save, note, el('span', 'help', help));
+      f.addEventListener('submit', async ev => {
+        ev.preventDefault(); save.disabled = true; note.textContent = 'Checking…';
+        try {
+          const res = await fetch('/api/brief-link', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' }, body: JSON.stringify({ kind, url: input.value }) });
+          const r = await res.json();
+          if (!res.ok) { note.textContent = r.error; return; }
+          loadStandup();
+        } catch (err) { note.textContent = 'Hub is not running.'; } finally { save.disabled = false; }
+      });
+      box.append(f); input.focus();
+    };
+    return b;
+  };
+  if (!cal.outlook) actions.append(connectBox('ics', 'Connect Outlook', 'https://outlook.office365.com/owa/calendar/…/calendar.ics',
+    'Outlook on the web > Settings > Calendar > Shared calendars > Publish a calendar: pick your Calendar and "Can view all details", Publish, then copy the ICS link here. It stays on this PC.'));
+  if (!cal.teams) actions.append(connectBox('teams', 'Connect Teams', 'https://…logic.azure.com/… or …powerplatform.com/…',
+    'In Teams: Workflows > "Post to a chat when a webhook request is received" > choose your chat with Flow bot > copy the link here. It stays on this PC.'));
+  else {
+    const send = el('button', 'btn primary sm', 'Send to Teams'); send.type = 'button'; send.dataset.label = 'Send to Teams';
+    send.onclick = async () => {
+      send.disabled = true; send.textContent = 'Sending…';
+      try {
+        const res = await fetch('/api/brief-send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' }, body: JSON.stringify({ text: briefText }) });
+        const r = await res.json(); send.textContent = res.ok ? 'Sent' : r.error;
+      } catch (err) { send.textContent = 'Hub is not running.'; }
+      setTimeout(() => { send.textContent = send.dataset.label; send.disabled = false; }, 2500);
+    };
+    actions.append(send);
+  }
 }
 $('suRefresh').addEventListener('click', loadStandup);
 $('suCopy').addEventListener('click', e => copyText(scrumText, e.currentTarget));

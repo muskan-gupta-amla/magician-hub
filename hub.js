@@ -523,6 +523,110 @@ async function setEstimate({ key, time }) {
   return { ok: true, key, seconds };
 }
 
+// Morning brief, PC only: today's meetings from your published Outlook calendar (an ICS link you paste once), and
+// "Send to Teams" through a Teams Workflows webhook you paste once. Both links live in %APPDATA%\MagicianHub\brief.json.
+const BRIEF_FILE = path.join(DATA_DIR, 'brief.json');
+const briefLinks = () => { try { return HOSTED ? {} : JSON.parse(fs.readFileSync(BRIEF_FILE, 'utf8')); } catch (e) { return {}; } };
+const OUTLOOK_HOSTS = /^(outlook\.office365\.com|outlook\.office\.com|outlook\.live\.com)$/i;
+const TEAMS_HOSTS = /(\.logic\.azure\.com|\.powerplatform\.com|\.webhook\.office\.com)$/i;
+const linkOk = (url, hosts) => { try { const u = new URL(url); return u.protocol === 'https:' && hosts.test(u.hostname); } catch (e) { return false; } };
+
+// ICS: unfold lines, read each event; times with a TZID are taken as this PC's local time (Outlook publishes in your zone).
+const icsText = v => (v || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1').trim();
+function icsDate(v) {
+  const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/.exec(v || '');
+  if (!m) return null;
+  const [, y, mo, d, h = '0', mi = '0', s = '0', z] = m;
+  return z ? new Date(Date.UTC(+y, mo - 1, +d, +h, +mi, +s)) : new Date(+y, mo - 1, +d, +h, +mi, +s);
+}
+function parseIcs(text) {
+  const events = []; let ev = null;
+  for (const line of text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)) {
+    if (line === 'BEGIN:VEVENT') ev = { EXDATE: [] };
+    else if (line === 'END:VEVENT') { if (ev && ev.DTSTART) events.push(ev); ev = null; }
+    else if (ev) {
+      const i = line.indexOf(':'); if (i < 0) continue;
+      const name = line.slice(0, i).split(';')[0], val = line.slice(i + 1);
+      if (name === 'EXDATE') ev.EXDATE.push(...val.split(',').map(icsDate));
+      else if (['DTSTART', 'DTEND', 'RECURRENCE-ID'].includes(name)) { ev[name] = icsDate(val); if (name === 'DTSTART') ev.allDay = !/T/.test(val); }
+      else ev[name] = val;
+    }
+  }
+  return events;
+}
+// When a (possibly recurring) event happens on the day starting at `day` (local midnight), or null.
+const DOW = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const midnight = t => { const x = new Date(t); x.setHours(0, 0, 0, 0); return x; };
+const monday = t => { const x = midnight(t); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; };
+function occurrence(ev, day) {
+  const start = ev.DTSTART, next = new Date(day); next.setDate(next.getDate() + 1);
+  if (!ev.RRULE) return start >= day && start < next ? start : null;
+  const r = Object.fromEntries(ev.RRULE.split(';').map(p => p.split('='))), every = +r.INTERVAL || 1;
+  const at = new Date(day); at.setHours(start.getHours(), start.getMinutes(), 0, 0);
+  if (midnight(at) < midnight(start) || (r.UNTIL && at > icsDate(r.UNTIL))) return null;
+  const days = Math.round((midnight(at) - midnight(start)) / 86400000);
+  if (r.FREQ === 'DAILY') { if (days % every || (r.COUNT && days / every >= +r.COUNT)) return null; }
+  else if (r.FREQ === 'WEEKLY') {
+    const byday = (r.BYDAY || DOW[start.getDay()]).split(','), weeks = Math.round((monday(at) - monday(start)) / (7 * 86400000));
+    if (!byday.includes(DOW[at.getDay()]) || weeks % every || (r.COUNT && (weeks / every) * byday.length >= +r.COUNT)) return null;
+  } else if (r.FREQ === 'MONTHLY' && !r.BYDAY) {
+    const months = (at.getFullYear() - start.getFullYear()) * 12 + at.getMonth() - start.getMonth();
+    if (at.getDate() !== start.getDate() || months % every) return null;
+  } else return null;   // rarer rules (e.g. "second Tuesday") are skipped
+  return ev.EXDATE.some(x => x && Math.abs(x - at) < 60000) ? null : at;
+}
+let icsCache = { url: null, at: 0, events: [] };
+async function meetingsOn(day = midnight(Date.now())) {
+  const { ics } = briefLinks();
+  if (!ics) return null;
+  if (icsCache.url !== ics || Date.now() - icsCache.at > 10 * 60000) {
+    const res = await fetch(ics, { headers: { Accept: 'text/calendar' } });
+    if (!res.ok) throw new Error(`Outlook answered ${res.status}`);
+    icsCache = { url: ics, at: Date.now(), events: parseIcs(await res.text()) };
+  }
+  const events = icsCache.events, moved = new Set(events.filter(e => e['RECURRENCE-ID']).map(e => `${e.UID} ${+e['RECURRENCE-ID']}`));
+  const out = [];
+  for (const e of events) {
+    if (/CANCELLED/i.test(e.STATUS || '') || /^Canceled:/i.test(e.SUMMARY || '')) continue;
+    const at = e['RECURRENCE-ID'] ? occurrence({ ...e, RRULE: null }, day) : occurrence(e, day);
+    if (!at || (!e['RECURRENCE-ID'] && e.RRULE && moved.has(`${e.UID} ${+at}`))) continue;   // a moved occurrence comes as its own event
+    const length = (e.DTEND || e.DTSTART) - e.DTSTART, text = `${e['X-MICROSOFT-SKYPETEAMSMEETINGURL'] || ''} ${icsText(e.DESCRIPTION)}`;
+    const join = (/https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s>"]+/.exec(text) || [])[0] || null;
+    out.push({ title: icsText(e.SUMMARY) || 'Busy', start: at.toISOString(), end: new Date(+at + length).toISOString(), allDay: !!e.allDay,
+      location: icsText(e.LOCATION), join });
+  }
+  return out.sort((a, b) => a.start.localeCompare(b.start));
+}
+async function saveBriefLink({ kind, url }) {
+  if (HOSTED) return { error: 'Connect Outlook and Teams in the hub on your own PC.' };
+  const links = briefLinks(), u = String(url || '').trim();
+  if (kind === 'ics') {
+    if (u && !linkOk(u, OUTLOOK_HOSTS)) return { error: 'Paste the ICS link from Outlook (Settings > Calendar > Shared calendars > Publish a calendar).' };
+    if (u) {
+      const res = await fetch(u, { headers: { Accept: 'text/calendar' } });
+      if (!res.ok || !(await res.text()).includes('BEGIN:VCALENDAR')) return { error: 'Outlook did not return a calendar from that link.' };
+    }
+    links.ics = u || undefined; icsCache = { url: null, at: 0, events: [] };
+  } else if (kind === 'teams') {
+    if (u && !linkOk(u, TEAMS_HOSTS)) return { error: 'Paste the webhook link from a Teams Workflows flow ("Post to a chat when a webhook request is received").' };
+    links.teams = u || undefined;
+  } else return { error: 'Unknown link.' };
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(BRIEF_FILE, JSON.stringify(links), { mode: 0o600 });
+  return { ok: true, outlook: !!links.ics, teams: !!links.teams };
+}
+async function sendBrief({ text }) {
+  const { teams } = briefLinks();
+  if (HOSTED || !teams) return { error: 'Connect Teams first.' };
+  const body = String(text || '').trim().slice(0, 6000);
+  if (!body) return { error: 'Nothing to send.' };
+  const card = { type: 'AdaptiveCard', version: '1.4', $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    body: [{ type: 'TextBlock', text: 'Morning brief', weight: 'Bolder', size: 'Medium' }, { type: 'TextBlock', text: body, wrap: true }] };
+  const res = await fetch(teams, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'message', attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', content: card }] }) });
+  return res.ok ? { ok: true } : { error: `Teams answered ${res.status}. Check the webhook link.` };
+}
+
 async function connectJira(email, token) {
   if (HOSTED) return { error: 'The team server uses its own Jira account.' };
   if (!/^[^@\s]+@[^@\s]+$/.test(email || '') || !(token || '').trim()) return { error: 'Enter your Jira email and the token.' };
@@ -917,7 +1021,8 @@ const server = http.createServer(async (req, res) => {
   }
   // Actions that change something: connect a Jira token, log time. Only from this hub's own page on this PC:
   // POST, our own header (other websites can't send it without a CORS check we never answer), addressed to localhost.
-  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i) };
+  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i),
+    '/api/brief-link': i => saveBriefLink(i), '/api/brief-send': i => sendBrief(i) };
   if (actions[url.pathname]) {
     const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '');
     if (HOSTED || req.method !== 'POST' || req.headers['x-magician-hub'] !== '1' || !local) return sendJson(res, 403, { error: 'Not allowed.' });
@@ -946,6 +1051,11 @@ const server = http.createServer(async (req, res) => {
     '/api/fix': () => { const key = parseKey(q('key')); return key ? findFix(key) : { error: 'Enter a ticket key or Jira link, like Z10-41590.' }; },
     '/api/standup': () => team.has(q('person').toLowerCase()) ? standup(q('person').toLowerCase()) : { error: 'Pick your name at the top right first.' },
     '/api/ticket-time': () => ticketTime(q('key').toUpperCase()),
+    '/api/meetings': async () => {   // today's meetings for the morning brief (PC only)
+      const links = briefLinks();
+      try { return { outlook: !!links.ics, teams: !!links.teams, meetings: await meetingsOn() }; }
+      catch (e) { return { outlook: true, teams: !!links.teams, meetings: null, error: 'Could not read your Outlook calendar. Check the link.' }; }
+    },
     '/api/release': () => q('from') && q('to') ? releaseNotes(q('from'), q('to')) : { error: 'Enter both refs, like v10.14.0.6 and v10.14.0.0-hotfixes.' },
     '/api/impact': () => q('pr') ? impact(q('pr'), Math.max(0, parseInt(q('from'), 10) || 0)) : { error: 'Enter a PR link or a ticket key.' },
     '/api/jira-mine': async () => {
@@ -979,7 +1089,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Used by test/popups.test.js; starting the hub (node hub.js) is below.
-module.exports = { poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
+module.exports = { parseIcs, occurrence, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
   setSession: s => { token = s.token; email = s.email; },
   state: () => ({ runs: [...runs.values()], prs, requests, lastError, events }) };
 
