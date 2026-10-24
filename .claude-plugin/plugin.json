@@ -1,6 +1,6 @@
 {
   "name": "magician-hub",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Magician Hub for the Magicians team. Run /magician-hub:setup once; /magician-hub:start opens it any time. Needs Node.js 18+ and Git; uses your existing Git login.",
   "author": { "name": "Magicians Team" },
   "repository": "https://github.com/muskan-gupta-amla/magician-hub",
