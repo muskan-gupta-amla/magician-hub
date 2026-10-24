@@ -277,14 +277,7 @@
   @keyframes toastIn { from { opacity:0; transform:translateY(12px) scale(.98); } }
   @keyframes toastLife { to { transform:scaleX(0); } }
 
-  /* Log time: one-click comment options */
-  .presets { flex:1 1 520px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-  .presets .lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-right:2px; }
-  .preset { all:unset; cursor:pointer; font:600 12px var(--font); padding:4px 11px; border-radius:999px; border:1px solid var(--line);
-    background:var(--bg); color:var(--fg-2); transition:all .12s; }
-  .preset:hover { border-color:var(--brand); color:var(--brand); }
-  .preset[aria-pressed="true"] { background:var(--brand); border-color:var(--brand); color:#fff; }
-  .preset:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  #tmType { min-width:170px; }
   @media (prefers-reduced-motion: reduce) { .toast, .toast::after { animation:none; } td, .panel { transition:none; } }
 
   @media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
@@ -497,9 +490,9 @@
             <label class="field">Ticket<select id="tmKey"></select></label>
             <label class="field">Time<input id="tmHours" placeholder="2h 30m" autocomplete="off"></label>
             <label class="field">Date<input id="tmDate" type="date"></label>
+            <label class="field">Work type<select id="tmType"><option value="">Choose…</option></select></label>
             <label class="field wide">Comment<input id="tmComment" placeholder="What you worked on" autocomplete="off" list="tmCommentList"></label>
             <datalist id="tmCommentList"></datalist>
-            <div class="presets" id="tmPresets" role="group" aria-label="Comment options"><span class="lbl">Quick comment</span></div>
             <button class="btn primary" type="submit">Log time</button>
             <span class="count" id="tmLogMsg"></span>
           </form>
@@ -1235,15 +1228,22 @@ function renderTime(d) {
   $('tmOut').hidden = false;
 }
 $('tmRefresh').addEventListener('click', () => loadTime(true));
-// Comment options: one click fills the comment; your recent comments are offered as you type.
-const COMMENT_PRESETS = ['Development', 'Bug fixing', 'Code review', 'Review comments fixes', 'Unit testing', 'Testing', 'QA support',
-  'Analysis', 'Investigation', 'Deployment', 'Documentation', 'Meeting', 'Daily stand-up', 'Knowledge transfer'];
-function markPreset() { [...$('tmPresets').querySelectorAll('.preset')].forEach(b => b.setAttribute('aria-pressed', String(b.textContent === $('tmComment').value))); }
-COMMENT_PRESETS.forEach(text => {
-  const b = el('button', 'preset', text); b.type = 'button'; b.setAttribute('aria-pressed', 'false');
-  b.addEventListener('click', () => { $('tmComment').value = $('tmComment').value === text ? '' : text; markPreset(); $('tmComment').focus(); });
-  $('tmPresets').append(b);
+// Work type: picking one starts the comment with it ("Code review: ..."); your recent comments are offered as you type.
+const WORK_TYPES = { 'Build': ['Development', 'Bug fixing', 'Review comments fixes', 'Unit testing'],
+  'Review & QA': ['Code review', 'Testing', 'QA support'], 'Analysis': ['Analysis', 'Investigation', 'Documentation', 'Knowledge transfer'],
+  'Other': ['Deployment', 'Meeting', 'Daily stand-up'] };
+const COMMENT_PRESETS = Object.values(WORK_TYPES).flat();
+for (const [group, types] of Object.entries(WORK_TYPES)) {
+  const g = el('optgroup'); g.label = group;
+  types.forEach(t => { const o = el('option', null, t); o.value = t; g.append(o); });
+  $('tmType').append(g);
+}
+$('tmType').addEventListener('change', () => {
+  const type = $('tmType').value, c = $('tmComment'), rest = c.value.replace(new RegExp('^(' + COMMENT_PRESETS.join('|') + ')(: )?'), '').trim();
+  c.value = type ? (rest ? `${type}: ${rest}` : type) : rest;
+  c.focus();
 });
+function markPreset() { $('tmType').value = COMMENT_PRESETS.find(t => $('tmComment').value === t || $('tmComment').value.startsWith(t + ': ')) || ''; }
 $('tmComment').addEventListener('input', markPreset);
 function fillCommentList(entries) {
   const list = $('tmCommentList'); list.textContent = '';
