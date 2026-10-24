@@ -145,7 +145,7 @@ async function pollRepo(repo) {
     const run = {
       id: r.id, repo, branch: r.head_branch, workflow: r.name, status: r.status,
       conclusion: r.conclusion, url: r.html_url, updated: r.updated_at, author,
-      reason: reasons.get(r.id) || ''
+      reason: reasons.get(r.id) || '', raw: { head_commit: { author: { email: (r.head_commit && r.head_commit.author && r.head_commit.author.email) || '' } }, actor: { login: r.actor.login } }
     };
     if (run.conclusion === 'failure' && !reasons.has(r.id)) reasons.set(r.id, run.reason = await failureReason(repo, r.id));
     runs.set(r.id, run);
@@ -806,6 +806,8 @@ async function poll() {
     const cutoff = buildSince();
     [...runs.values()].sort((a, b) => b.updated.localeCompare(a.updated))
       .filter((r, i) => i >= 500 || r.updated < cutoff).forEach(r => runs.delete(r.id));
+    // Builds loaded before the team list arrived (first run): keep only the team's.
+    if (team.size) for (const r of runs.values()) if (!team.has(r.author) && !(r.author = runAuthor(r.raw))) runs.delete(r.id);
     seeded = true;
     lastError = null;
   } catch (e) {
