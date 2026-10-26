@@ -137,6 +137,10 @@
   .emptyst { padding:30px 16px; text-align:center; color:var(--muted); }
   .emptyst b { display:block; color:var(--fg); font-size:14.5px; margin-bottom:2px; }
 
+  /* Cards: content may shrink, so a long word never pushes past the edge */
+  .env, .sprint, .kpi, .brief, .rel { grid-template-columns:minmax(0,1fr); min-width:0; }
+  .env > *, .sprint > *, .kpi > *, .brief > * { min-width:0; }
+
   /* Tables */
   .tbl { overflow-x:auto; }
   table { border-collapse:collapse; width:100%; font-size:13.5px; font-variant-numeric:tabular-nums; }
@@ -367,12 +371,13 @@
   .env.bad { border-color:color-mix(in srgb, var(--bad) 45%, transparent); }
   .env .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .env .top b { font:800 16px var(--font); letter-spacing:.02em; }
-  .env .branch { font:600 13px var(--mono); color:var(--brand); overflow-wrap:anywhere; }
+  .env .top .pill { flex:none; }
+  .env .branch { font:600 13px var(--mono); color:var(--brand); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }   /* full name on hover */
   .env .svc { display:flex; flex-wrap:wrap; gap:4px; }
   .env .by { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--fg-2); }
   .env .by .av { width:20px; height:20px; font-size:9px; }
-  .env .err-line { font:12px/1.4 var(--mono); color:var(--bad); }
-  .env .prev { font-size:11.5px; color:var(--muted); }
+  .env .err-line { font:12px/1.4 var(--mono); color:var(--bad); overflow-wrap:anywhere; }
+  .env .prev { font-size:11.5px; color:var(--muted); overflow-wrap:anywhere; }
   .scrum3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
   .scrum3 .col { border-top:3px solid var(--line); }
   .scrum3 .col.y { border-top-color:var(--ok); } .scrum3 .col.t { border-top-color:var(--brand); } .scrum3 .col.b { border-top-color:var(--warn); }
@@ -1219,15 +1224,16 @@ function renderEnvs(d) {
     top.append(el('b', null, env), last ? statePill(last) : pill('No deploys', 's-off'));
     card.append(top);
     if (last) {
-      if (last.branch) card.append(el('div', 'branch', last.branch));
-      const svc = el('div', 'svc'), all = last.services.length ? last.services : [{ code: 'deploy' }];
+      if (last.branch) { const br = el('div', 'branch', last.branch); br.title = last.branch; card.append(br); }
+      const svc = el('div', 'svc'), all = last.services;   // unknown for older runs: no chips rather than a vague one
       all.slice(0, 5).forEach(x => { const c = el('span', 'chip', svcName(x.code)); if (x.repo) c.title = x.repo; svc.append(c); });
       if (all.length > 5) { const more = el('span', 'chip', `+${all.length - 5} more`); more.title = all.slice(5).map(x => svcName(x.code)).join(', '); svc.append(more); }
+      svc.hidden = !all.length;
       const by = el('div', 'by'); by.append(avatar(last.who), `${personName(last.who)} · ${ago(last.at)}`);
       card.append(svc, by);
       if (last.failed) card.append(el('div', 'err-line', last.failed));
       const day = list.filter(x => Date.now() - new Date(x.at) < DAY).length;
-      if (list.length > 1) card.append(el('div', 'prev', `${day} deploy${day === 1 ? '' : 's'} in 24h · before: ${personName(list[1].who)}${list[1].branch ? ' (' + list[1].branch + ')' : ''} ${ago(list[1].at)}`));
+      if (list.length > 1) { const prev = el('div', 'prev', `${day} deploy${day === 1 ? '' : 's'} in 24h · before: ${personName(list[1].who)}, ${ago(list[1].at)}`); prev.title = list[1].branch || ''; card.append(prev); }
     } else card.append(el('div', 'prev', `None in the last ${d.deployDays || 3} days`));
     box.append(card);
   });
