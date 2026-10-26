@@ -45,7 +45,13 @@
   /* Shell */
   .app { display:grid; grid-template-columns:252px minmax(0,1fr); min-height:100vh; }
   aside.side { position:sticky; top:0; height:100vh; display:flex; flex-direction:column; gap:22px; padding:20px 14px;
-    background:var(--panel); border-right:1px solid var(--line); }
+    background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; scrollbar-width:thin; }   /* short screens: the sidebar scrolls on its own */
+  @media (max-height:780px) and (min-width:861px) {
+    aside.side { gap:12px; padding:14px 12px; }
+    nav.nav a { padding:7px 10px; }
+    .nav-label { padding-top:8px; }
+    .side-foot { gap:7px; padding:10px; }
+  }
   .brand { display:flex; gap:11px; align-items:center; padding:0 8px; }
   .brand .mark { width:36px; height:36px; border-radius:11px; display:grid; place-items:center; color:#fff;
     background:linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow:0 6px 16px -6px var(--brand); }
