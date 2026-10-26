@@ -300,10 +300,10 @@ test('impact check refuses closed and merged PRs', async () => {
 });
 
 test('Teams nudge: posts once per slot, only with a webhook, listing who needs what', async () => {
-  const at10 = new Date(2026, 9, 23, 10, 0);
+  const at = h => { const d = new Date(); d.setHours(h, 0, 0, 0); return d; }, at10 = at(10);   // today: the PRs' ages are relative to now
   assert.equal(await hub.nudge(at10), false);   // no webhook configured
   process.env.TEAMS_WEBHOOK_URL = 'https://teams.test/hook';
-  assert.equal(await hub.nudge(new Date(2026, 9, 23, 11, 0)), false);   // not a nudge time
+  assert.equal(await hub.nudge(at(11)), false);   // not a nudge time
   assert.equal(await hub.nudge(at10), true);
   assert.equal(await hub.nudge(at10), false);   // same slot: no second post
   assert.equal(posted.length, 1);
