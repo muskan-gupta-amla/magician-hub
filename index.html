@@ -440,6 +440,7 @@
     <div class="side-foot">
       <div class="live"><span class="dot" id="liveDot"></span><span id="meta">Connecting…</span></div>
       <div class="muted" id="meta2"></div>
+      <button class="btn sm" type="button" id="jiraBtn" hidden><svg class="i" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span id="jiraBtnText">Connect Jira</span></button>
       <button class="btn sm" type="button" id="alertBtn"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span id="alertText">Browser alerts</span></button>
       <button class="btn sm" type="button" id="alertTest" hidden>Send test alert</button>
       <div class="muted" id="alertHint"></div>
@@ -455,6 +456,7 @@
     <div class="err pick" id="pickMe" hidden>Pick your name at the top right to see your PRs, review requests and alerts.</div>
     <div class="err" id="err" hidden></div>
     <div class="err pick form" id="teamBanner" hidden></div>
+    <div class="err pick form" id="jiraBox" hidden></div>
 
     <!-- Filters shared by Team PRs and Builds -->
     <div class="toolbar" id="toolbar" role="search" aria-label="Filters" hidden>
@@ -1019,7 +1021,25 @@ function personalise(d) {
     banner.append(text, ...jiraTokenForm('Loading the Magicians team…'));
   }
   banner.hidden = !noTeam;
+  // Sidebar: Connect Jira (or change the token) at any time, on this PC
+  const connected = !!d.canLogTime && !d.jiraNeedsToken;
+  $('jiraBtn').hidden = !!d.hosted;
+  $('jiraBtnText').textContent = connected ? 'Change Jira token' : d.jiraNeedsToken ? 'Reconnect Jira' : 'Connect Jira';
 }
+$('jiraBtn').addEventListener('click', () => {
+  const box = $('jiraBox');
+  if (!box.hidden) { box.hidden = true; return; }
+  box.textContent = '';
+  box.style.display = 'grid'; box.style.gap = '6px';
+  const head = el('div', 'row'), close = el('button', 'btn sm', 'Close'); close.type = 'button'; close.style.marginLeft = 'auto';
+  close.onclick = () => { box.hidden = true; };
+  const connected = state && state.canLogTime && !state.jiraNeedsToken;
+  head.append(el('b', null, connected ? `Jira is connected as ${state.canLogTime}.` : 'Connect Jira.'),
+    el('span', null, connected ? ' Paste a new token to replace it.' : ' Paste your Jira API token: it loads the Magicians team, your tickets, sprints and time logs.'), close);
+  box.append(head, ...jiraTokenForm('All set.'));
+  box.hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
+  box.querySelector('input').focus();
+});
 $('fMe').addEventListener('input', async () => {
   store.set('hub.me', $('fMe').value); personalise(state); render();
   await loadMyJira(true);
@@ -1509,7 +1529,7 @@ function jiraTokenForm(doneText) {
     ev.preventDefault(); go.disabled = true; note.textContent = 'Checking with Jira…';
     try {
       const res = await fetch('/api/jira-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
-        body: JSON.stringify({ email: viewer(), token: tokenIn.value }) });
+        body: JSON.stringify({ email: (state && state.viewer) || viewer(), token: tokenIn.value }) });   // always your own Jira login, whoever is picked in You
       const r = await res.json();
       tokenIn.value = '';
       if (!res.ok) { note.textContent = r.error; go.disabled = false; return; }
