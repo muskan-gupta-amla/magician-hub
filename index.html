@@ -286,6 +286,15 @@
   @keyframes toastLife { to { transform:scaleX(0); } }
 
   #tmType { min-width:170px; }
+  .periodbar { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end; padding:12px 16px; border-bottom:1px solid var(--line-2); }
+  .seg { display:inline-flex; flex-wrap:wrap; gap:2px; padding:3px; border-radius:12px; background:var(--panel-2); border:1px solid var(--line); }
+  .seg button { all:unset; cursor:pointer; padding:6px 12px; border-radius:9px; font:600 12.5px var(--font); color:var(--fg-2); }
+  .seg button:hover { color:var(--brand); }
+  .seg button[aria-pressed="true"] { background:var(--panel); color:var(--brand); box-shadow:0 1px 3px rgba(25,23,38,.12); }
+  .seg button:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
+  .periodbar .custom { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+  .periodbar .custom[hidden] { display:none; }
+  .periodbar .field input { min-width:0; }
 
   /* Time charts: week ring, stacked day bars (one colour per ticket) with what is left to 8h */
   .weekchart { display:grid; grid-template-columns:170px minmax(0,1fr); gap:24px; align-items:center; padding:18px 20px; }
@@ -584,7 +593,7 @@
     <section data-view="standup" class="stack" hidden>
       <div class="panel">
         <div class="panel-h"><h2 id="suTitle">Daily Scrum</h2>
-          <div class="row"><button class="btn" id="suRefresh" type="button">Refresh</button><button class="btn primary" id="suCopy" type="button" data-label="Copy for Teams">Copy for Teams</button></div></div>
+          <div class="row"><span class="status" id="suScrumMsg" role="status"></span><button class="btn" id="suScrumLog" type="button" hidden>Log 30m scrum</button><button class="btn" id="suRefresh" type="button">Refresh</button><button class="btn primary" id="suCopy" type="button" data-label="Copy for Teams">Copy for Teams</button></div></div>
         <div class="hint pad" id="suMsg"></div>
       </div>
       <div id="suOut" class="stack" hidden>
@@ -609,11 +618,22 @@
       <div class="panel">
         <div class="panel-h"><h2 id="tmTitle">Time</h2>
           <div class="row"><button class="btn" id="tmRefresh" type="button">Refresh</button></div></div>
+        <div class="periodbar">
+          <div class="seg" id="tmPeriods" role="group" aria-label="Period">
+            <button type="button" data-p="week">This week</button><button type="button" data-p="lastweek">Last week</button>
+            <button type="button" data-p="7d">Last 7 days</button><button type="button" data-p="30d">Last 30 days</button><button type="button" data-p="custom">Custom</button>
+          </div>
+          <form class="custom" id="tmCustom" hidden>
+            <label class="field">From<input type="date" id="tmFrom" required></label>
+            <label class="field">To<input type="date" id="tmTo" required></label>
+            <button class="btn primary sm" type="submit">Show</button>
+          </form>
+        </div>
         <div class="hint pad" id="tmMsg"></div>
       </div>
       <div id="tmOut" class="stack" hidden>
         <div class="panel" id="tmLogPanel" hidden>
-          <div class="panel-h"><h2>Log time</h2><span class="muted" id="tmLogWho"></span></div>
+          <div class="panel-h"><h2>Log time</h2><div class="row"><button class="btn sm" id="tmScrumLog" type="button">+ 30m Daily Scrum</button><span class="muted" id="tmLogWho"></span></div></div>
           <form class="toolbar flat" id="tmLogForm">
             <label class="field">Ticket<select id="tmKey"></select></label>
             <label class="field">Time<input id="tmHours" placeholder="2h 30m" autocomplete="off"></label>
@@ -628,12 +648,12 @@
         </div>
         <div class="kpis four">
           <div class="kpi" id="k-today"><div class="top">Logged today</div><div class="n">–</div><div class="sub"></div></div>
-          <div class="kpi" id="k-week"><div class="top">This week</div><div class="n">–</div><div class="sub"></div></div>
-          <div class="kpi" id="k-last"><div class="top">Last week</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="k-week"><div class="top" id="k-week-label">This week</div><div class="n">–</div><div class="sub"></div></div>
+          <div class="kpi" id="k-last"><div class="top">Daily average</div><div class="n">–</div><div class="sub"></div></div>
           <div class="kpi" id="k-over"><div class="top">Over estimate</div><div class="n">–</div><div class="sub">open tickets</div></div>
         </div>
         <div class="panel">
-          <div class="panel-h"><h2>This week, day by day</h2><span class="muted" id="tmWeekTotal"></span></div>
+          <div class="panel-h"><h2 id="tmDaysTitle">This week, day by day</h2><span class="muted" id="tmWeekTotal"></span></div>
           <div class="weekchart">
             <div class="ring" id="tmRing"></div>
             <div><div class="week" id="tmWeek"></div><div class="legend" id="tmLegend"></div></div>
@@ -646,7 +666,7 @@
             <tbody id="tmTickets"></tbody></table></div>
         </div>
         <div class="panel">
-          <div class="panel-h"><h2>Recent time logs</h2><span class="muted">last 14 days</span></div>
+          <div class="panel-h"><h2>Time logs</h2><span class="muted" id="tmLogsLabel"></span></div>
           <div id="tmLogs"></div>
         </div>
       </div>
@@ -1284,6 +1304,7 @@ async function loadStandup() {
     ? fetch('/api/time?' + new URLSearchParams({ person: v })).then(r => r.ok ? r.json() : null).then(t => { if (t) myTime = t; }).catch(() => {}) : null;
   const [d] = await Promise.all([tool('/api/standup', { person: v }, $('suMsg')), loadMyJira(), timeReady]);   // Jira feeds "Today" and time logged
   if (!d || viewer() !== v) return;
+  $('suScrumLog').hidden = !(state.canLogTime && state.canLogTime === v);
   const mine = state.prs.filter(p => isMe(p.author) && !whyParked(p)), Y = [], T = [], B = [];
   const pr = p => `${shortRepo(p.repo)} #${p.number}`, age = p => Math.floor((Date.now() - new Date(p.created)) / DAY);
   // Yesterday
@@ -1404,6 +1425,19 @@ function renderBrief(v, d, x) {
   box.append(pts);
 }
 $('suRefresh').addEventListener('click', loadStandup);
+// One click: 30 minutes of daily scrum on the team's current stand-up ticket (the hub finds it), today, once.
+async function logScrum(btn, show) {
+  btn.disabled = true; show('busy', 'Logging…');
+  try {
+    const res = await fetch('/api/scrum-log', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' }, body: '{}' });
+    const r = await res.json();
+    if (!res.ok) { show('bad', r.error); return; }
+    show('ok', `Logged ${fmtH(r.seconds)} on ${r.key}`);
+    loadTime(true);
+  } catch (e) { show('bad', 'Hub is not running.'); } finally { btn.disabled = false; }
+}
+$('suScrumLog').addEventListener('click', e => logScrum(e.currentTarget, (cls, text) => { const m = $('suScrumMsg'); m.className = 'status ' + cls; m.textContent = text; }));
+$('tmScrumLog').addEventListener('click', e => logScrum(e.currentTarget, setStatus));
 $('suCopy').addEventListener('click', e => copyText(scrumText, e.currentTarget));
 
 // Time: what the viewer logged in Jira (last 14 days) and estimate vs logged on their open tickets.
@@ -1411,13 +1445,35 @@ const fmtH = sec => { const m = Math.round((sec || 0) / 60), h = Math.floor(m / 
 const dayKey = d => new Date(d).toLocaleDateString('en-CA');
 const weekStart = (offset = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7); return d; };   // Monday
 let myTime = null, timeShownFor = null;   // timeShownFor: whose hours the Time Log page is showing
+// Period shown on Time Log: this week, last week, last 7 or 30 days, or a custom range (at most 92 days back). Remembered per browser.
+let period = store.get('hub.period') || 'week';
+const dayOnly = x => { const d = new Date(x); d.setHours(0, 0, 0, 0); return d; };
+const addDays = (x, n) => { const d = new Date(x); d.setDate(d.getDate() + n); return d; };
+function rangeOf(p) {
+  const today = dayOnly(Date.now()), mon = weekStart(), fmt = x => x.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  if (p === 'lastweek') return { from: weekStart(-1), to: addDays(mon, -1), label: 'Last week' };
+  if (p === '7d') return { from: addDays(today, -6), to: today, label: 'Last 7 days' };
+  if (p === '30d') return { from: addDays(today, -29), to: today, label: 'Last 30 days' };
+  if (p === 'custom') {
+    const f = store.get('hub.periodFrom'), t = store.get('hub.periodTo');
+    if (f && t) { const from = new Date(f + 'T00:00'), to = new Date(t + 'T00:00'); return { from, to, label: `${fmt(from)} – ${fmt(to)}` }; }
+  }
+  return { from: mon, to: addDays(mon, 6), label: 'This week' };
+}
+function markPeriod() {
+  document.querySelectorAll('#tmPeriods button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.p === period)));
+  $('tmCustom').hidden = period !== 'custom';
+}
 async function loadTime(refresh) {
   const v = viewer();
   $('tmTitle').textContent = v ? personName(v) + "'s time log" : 'Time Log';
   if (!state) return;   // load() calls again once the data is in
   if (!v) { $('tmMsg').textContent = 'Pick your name at the top right first.'; $('tmOut').hidden = true; return; }
-  if (!refresh && timeShownFor === v && $('tmOut').hidden === false) return;
-  const d = await tool('/api/time', refresh ? { person: v, refresh: 1 } : { person: v }, $('tmMsg'));
+  // The hub reads the last 14 days by default; an older period asks for more
+  const r = rangeOf(period), from = r.from < addDays(dayOnly(Date.now()), -13) ? dayKey(r.from) : '';
+  if (!refresh && timeShownFor === v && $('tmOut').hidden === false && (!from || (myTime && myTime.since <= r.from.toISOString()))) { renderTime(myTime); return; }
+  const params = { person: v }; if (from) params.from = from; if (refresh) params.refresh = 1;
+  const d = await tool('/api/time', params, $('tmMsg'));
   if (!d || viewer() !== v) return;
   myTime = d;
   renderTime(d);
@@ -1453,21 +1509,28 @@ async function loadTime(refresh) {
 }
 function renderTime(d) {
   timeShownFor = d.person;
-  const mon = weekStart(), lastMon = weekStart(-1), today = dayKey(Date.now());
+  markPeriod();
+  const r = rangeOf(period), fromK = dayKey(r.from), toK = dayKey(r.to), today = dayKey(Date.now());
   const sum = list => list.reduce((n, e) => n + e.seconds, 0);
-  const thisWeek = d.entries.filter(e => new Date(e.started) >= mon), lastWeek = d.entries.filter(e => new Date(e.started) >= lastMon && new Date(e.started) < mon);
-  const todaySec = sum(d.entries.filter(e => dayKey(e.started) === today)), weekSec = sum(thisWeek), target = d.weekHours * 3600;
+  const thisWeek = d.entries.filter(e => { const k = dayKey(e.started); return k >= fromK && k <= toK; });   // the chosen period
+  const DAY = (d.dayHours || 8) * 3600;
+  const allDays = [...Array(Math.round((dayOnly(r.to) - dayOnly(r.from)) / 864e5) + 1)].map((_, i) => addDays(r.from, i));
+  const workdays = allDays.filter(x => x.getDay() % 6 !== 0), pastWorkdays = workdays.filter(x => dayKey(x) < today);   // finished days only
+  const todaySec = sum(d.entries.filter(e => dayKey(e.started) === today)), weekSec = sum(thisWeek), target = Math.max(1, workdays.length) * (d.weekHours / 5) * 3600;
   const over = d.tickets.filter(t => t.estimate && t.spent > t.estimate);
   const todayLogs = d.entries.filter(e => dayKey(e.started) === today).length;
   kpi('k-today', fmtH(todaySec), todaySec ? `${todayLogs} log${todayLogs === 1 ? '' : 's'}` : 'nothing logged yet', todaySec ? '' : 'warn');
-  kpi('k-week', fmtH(weekSec), `of ${d.weekHours}h (${Math.round(weekSec / target * 100)}%)`, '');
-  kpi('k-last', fmtH(sum(lastWeek)), `of ${d.weekHours}h`, '');
-  kpi('k-over', over.length, 'open tickets', over.length ? 'alert' : '');
-  // Day by day, Monday to Friday (a weekend day only shows if time was logged on it): one colour per ticket, and what is left to 8h
-  const week = $('tmWeek'); week.textContent = '';
+  $('k-week-label').textContent = r.label;
+  kpi('k-week', fmtH(weekSec), `of ${fmtH(target)} (${Math.round(weekSec / target * 100)}%)`, '');
   const loggedOn = x => sum(thisWeek.filter(e => dayKey(e.started) === dayKey(x)));
-  const days = [...Array(7)].map((_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return x; }).filter((x, i) => i < 5 || loggedOn(x));
-  const perDay = days.map(loggedOn), DAY = (d.dayHours || 8) * 3600;
+  const short = pastWorkdays.filter(x => loggedOn(x) < DAY).length, pastSec = sum(thisWeek.filter(e => dayKey(e.started) < today));
+  kpi('k-last', pastWorkdays.length ? fmtH(pastSec / pastWorkdays.length) : '–', pastWorkdays.length ? `per working day · ${short ? `${short} day${short > 1 ? 's' : ''} under ${fmtH(DAY)}` : 'no short days'}` : 'no finished working day yet', short ? 'warn' : '');
+  kpi('k-over', over.length, 'open tickets', over.length ? 'alert' : '');
+  $('tmDaysTitle').textContent = `${r.label}, day by day`;
+  // Day by day, working days of the period (a weekend day only shows if time was logged on it): one colour per ticket, and what is left to 8h
+  const week = $('tmWeek'); week.textContent = '';
+  const days = allDays.filter(x => x.getDay() % 6 !== 0 || loggedOn(x));
+  const perDay = days.map(loggedOn);
   const scale = Math.max(DAY, ...perDay);
   const weekTickets = Object.entries(thisWeek.reduce((m, e) => (m[e.key] = (m[e.key] || 0) + e.seconds, m), {})).sort((a, b) => b[1] - a[1]);
   // Distinct colours however many tickets: the palette first, then hues spread by the golden angle
@@ -1502,9 +1565,9 @@ function renderTime(d) {
     Object.entries({ cx: 60, cy: 60, r: R, fill: 'none', 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-dasharray': `${part * C} ${C}` }).forEach(([a, v]) => c.setAttribute(a, v));
     c.style.stroke = stroke; if (part > 0) svg.append(c);
   });
-  const center = el('div', 'c'); center.append(el('b', null, fmtH(weekSec)), el('span', null, `of ${d.weekHours}h · ${Math.round(weekSec / target * 100)}%`));
+  const center = el('div', 'c'); center.append(el('b', null, fmtH(weekSec)), el('span', null, `of ${fmtH(target)} · ${Math.round(weekSec / target * 100)}%`));
   ring.append(svg, center);
-  $('tmWeekTotal').textContent = `${fmtH(weekSec)} of ${d.weekHours}h`;
+  $('tmWeekTotal').textContent = `${fmtH(weekSec)} of ${fmtH(target)} · ${workdays.length} working day${workdays.length === 1 ? '' : 's'}`;
   // Estimate vs logged: over estimate first, then in progress
   const body = $('tmTickets'), rank = t => (t.estimate && t.spent > t.estimate ? 0 : t.cat === 'indeterminate' ? 1 : 2);
   if (!d.tickets.length) emptyRow(body, 'No open tickets assigned to you', '', 6); else body.textContent = '';
@@ -1536,11 +1599,29 @@ function renderTime(d) {
   }
   // Recent logs
   const logs = $('tmLogs'); logs.textContent = '';
-  d.entries.slice(0, 30).forEach(e => listItem(logs, el('span', 'chip', new Date(e.started).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })),
+  $('tmLogsLabel').textContent = `${r.label} · ${thisWeek.length} log${thisWeek.length === 1 ? '' : 's'}`;
+  thisWeek.slice(0, 60).forEach(e => listItem(logs, el('span', 'chip', new Date(e.started).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })),
     e.key + ' · ' + e.summary, e.comment || 'No comment', el('span', 'r', fmtH(e.seconds)), jiraUrl(e.key)));
-  if (!d.entries.length) emptyBox(logs, 'No time logged in the last 14 days');
+  if (!thisWeek.length) emptyBox(logs, 'No time logged in this period');
   $('tmOut').hidden = false;
 }
+document.querySelectorAll('#tmPeriods button').forEach(b => b.addEventListener('click', () => {
+  period = b.dataset.p; store.set('hub.period', period); markPeriod();
+  if (period === 'custom' && !(store.get('hub.periodFrom') && store.get('hub.periodTo'))) { $('tmFrom').focus(); return; }   // pick dates first
+  loadTime();
+}));
+$('tmCustom').addEventListener('submit', e => {
+  e.preventDefault();
+  let f = $('tmFrom').value, t = $('tmTo').value;
+  if (!f || !t) return;
+  if (f > t) [f, t] = [t, f];
+  store.set('hub.periodFrom', f); store.set('hub.periodTo', t); period = 'custom'; store.set('hub.period', period);
+  loadTime();
+});
+{ const min = dayKey(addDays(Date.now(), -92)), max = dayKey(Date.now());   // the hub reads at most 92 days back
+  ['tmFrom', 'tmTo'].forEach(id => { $(id).min = min; $(id).max = max; });
+  $('tmFrom').value = store.get('hub.periodFrom') || dayKey(addDays(Date.now(), -13)); $('tmTo').value = store.get('hub.periodTo') || max;
+  markPeriod(); }
 $('tmRefresh').addEventListener('click', () => { setStatus('', ''); Object.keys(ticketInfo).forEach(k => delete ticketInfo[k]); loadTime(true); });
 // Work type: picking one starts the comment with it ("Code review: ..."); your recent comments are offered as you type.
 const WORK_TYPES = { 'Build': ['Development', 'Bug fixing', 'Review comments fixes', 'Unit testing'],

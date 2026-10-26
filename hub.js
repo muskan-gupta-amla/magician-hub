@@ -446,7 +446,7 @@ async function pollJira() {
 }
 // Time tracking and worklogs per ticket: one search on the team server; one `acli ... view` per ticket on a PC (6 at a time).
 const adfText = n => !n ? '' : typeof n === 'string' ? n : [n.text || '', ...(n.content || []).map(adfText)].join(' ').replace(/\s+/g, ' ');
-async function jiraTimeDetails(keys) {
+async function jiraTimeDetails(keys, since = new Date(Date.now() - 14 * 86400000)) {
   const out = {};
   const keep = (key, f) => {
     const tt = f.timetracking || {}, wl = f.worklog || {};
@@ -458,10 +458,10 @@ async function jiraTimeDetails(keys) {
   };
   if (JIRA_MODE === 'api') {
     for (let i = 0; i < keys.length; i += 100) (await jiraApi(`key in (${keys.slice(i, i + 100).join(',')})`, 100, 'timetracking,worklog,timespent')).forEach(x => keep(x.key, x.fields || {}));
-    // More than 20 logs: read the last 14 days' logs in full.
+    // More than 20 logs: read the period's logs in full.
     const site = new URL(cfg.jiraUrl).origin, auth = jiraBasic();
     for (const [key, d] of Object.entries(out).filter(([, d]) => d.partial)) {
-      const res = await fetch(`${site}/rest/api/3/issue/${key}/worklog?startedAfter=${Date.now() - 14 * 86400000}`, { headers: { Authorization: auth, Accept: 'application/json' } });
+      const res = await fetch(`${site}/rest/api/3/issue/${key}/worklog?startedAfter=${since.getTime()}`, { headers: { Authorization: auth, Accept: 'application/json' } });
       if (res.ok) keep(key, { timetracking: { originalEstimateSeconds: d.estimate, timeSpentSeconds: d.spent, remainingEstimateSeconds: d.remaining }, worklog: await res.json() });
     }
   } else {
@@ -474,15 +474,20 @@ async function jiraTimeDetails(keys) {
   }
   return out;
 }
-// Time page: what a person logged in the last 14 days, and estimate vs logged for their open tickets (5 min cache).
+// Time page: what a person logged since a date (default the last 14 days, at most 92 days back) and estimate vs logged
+// for their open tickets. Cached 5 minutes per person and start date.
 const timeCache = new Map();
-async function timeFor(person) {
-  const hit = timeCache.get(person);
+const forgetTime = person => { for (const k of timeCache.keys()) if (k.split(' ')[0] === person) timeCache.delete(k); };
+async function timeFor(person, from) {
+  const earliest = new Date(Date.now() - 92 * 86400000);
+  let since = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? new Date(from + 'T00:00') : new Date(Date.now() - 14 * 86400000);
+  if (since < earliest) since = earliest;
+  const sinceDay = since.toLocaleDateString('en-CA'), cacheKey = `${person} ${sinceDay}`;
+  const hit = timeCache.get(cacheKey);
   if (hit && Date.now() - hit.at < 300000) return hit.data;
-  const since = new Date(Date.now() - 14 * 86400000);
-  const [logged, open] = await Promise.all([jiraSearch(`worklogAuthor = "${person}" AND worklogDate >= -14d ORDER BY updated DESC`, 60), jiraFor(person)]);
+  const [logged, open] = await Promise.all([jiraSearch(`worklogAuthor = "${person}" AND worklogDate >= "${sinceDay}" ORDER BY updated DESC`, 200), jiraFor(person)]);
   const byKey = {}; [...logged, ...open].forEach(t => { byKey[t.key] = t; });
-  const details = await jiraTimeDetails(Object.keys(byKey));
+  const details = await jiraTimeDetails(Object.keys(byKey), since);
   const entries = Object.entries(details).flatMap(([key, d]) => d.worklogs
     .filter(w => w.author === person && new Date(w.started) >= since)
     .map(w => ({ key, summary: byKey[key].summary, started: w.started, seconds: w.seconds, comment: w.comment })))
@@ -491,7 +496,7 @@ async function timeFor(person) {
   // Tickets with more than 20 logs where recent logs can't be read through acli (PC without a Jira API token)
   const partial = Object.keys(details).filter(k => details[k].partial).map(k => ({ key: k, summary: byKey[k].summary, logs: details[k].logCount }));
   const data = { person, since: since.toISOString(), entries, tickets, partial, weekHours: cfg.weekHours || 40 };
-  timeCache.set(person, { at: Date.now(), data });
+  timeCache.set(cacheKey, { at: Date.now(), data });
   return data;
 }
 
@@ -533,8 +538,22 @@ async function logWork({ key, time, date, comment }) {
     if (res.status === 404 || res.status === 403) return { error: `You can't log time on ${key} (not found or no permission).${why ? ' Jira: ' + why : ''}` };
     return { error: why ? `Jira did not accept it: ${why}` : `Jira answered ${res.status}. Try again.` };
   }
-  timeCache.delete(jiraAuth.email);
+  forgetTime(jiraAuth.email);
   return { ok: true, key, seconds, day };
+}
+
+// One click: the daily scrum (30 minutes by default) on the team's current stand-up ticket, the newest one the
+// scrumTicketJql search finds (a new ticket is opened every few weeks). Once a day.
+async function logScrum({ date }) {
+  if (HOSTED) return { error: 'Log time in Jira directly: the team server can\'t log time as you.' };
+  if (JIRA_MODE !== 'api' || jiraNeedsToken) return { error: 'Connect your Jira API token on the Time Log page first.' };
+  const [ticket] = await jiraSearch(cfg.scrumTicketJql || 'project = Z10 AND summary ~ "\\"10x - Daily Stand-ups\\"" ORDER BY created DESC', 1);
+  if (!ticket) return { error: 'No stand-up ticket found in Jira (scrumTicketJql in config.json).' };
+  const today = new Date().toLocaleDateString('en-CA'), day = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : today;
+  const done = (await timeFor(jiraAuth.email)).entries.some(e => e.key === ticket.key && new Date(e.started).toLocaleDateString('en-CA') === day);
+  if (done) return { error: `Daily scrum is already logged on ${ticket.key} for ${day}.` };
+  const r = await logWork({ key: ticket.key, time: cfg.scrumTime || '30m', date: day, comment: cfg.scrumComment || 'Magicians Daily Scrum' });
+  return r.error ? r : { ...r, summary: ticket.summary };
 }
 
 // One ticket's time for the Log time form (read only): estimate, logged, remaining, and whether its estimate can be set.
@@ -571,7 +590,7 @@ async function setEstimate({ key, time }) {
     console.error(`Set estimate on ${key} failed: Jira ${res.status} ${why}`);
     return { error: why ? `Jira did not accept the estimate: ${why}` : `Jira answered ${res.status}. Try again.` };
   }
-  timeCache.delete(jiraAuth.email);
+  forgetTime(jiraAuth.email);
   return { ok: true, key, seconds };
 }
 
@@ -877,7 +896,7 @@ async function dayCheck(now) {
   const target = (cfg.dayHours || 8) * 3600, today = now.toLocaleDateString('en-CA'), sent = [];
   for (const person of HOSTED ? [...team] : email ? [email] : []) {
     try {
-      timeCache.delete(person);   // fresh numbers, not a 5-minute-old copy
+      forgetTime(person);   // fresh numbers, not a 5-minute-old copy
       const sec = (await timeFor(person)).entries.filter(e => new Date(e.started).toLocaleDateString('en-CA') === today).reduce((n, e) => n + e.seconds, 0);
       if (sec >= target) continue;
       notify(person, `Today: ${hm(sec)} logged`, `${hm(target - sec)} to go. Log it in Jira or on the Time page`, '/#time');
@@ -1002,7 +1021,7 @@ const server = http.createServer(async (req, res) => {
   }
   // Actions that change something: connect a Jira token, log time. Only from this hub's own page on this PC:
   // POST, our own header (other websites can't send it without a CORS check we never answer), addressed to localhost.
-  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i) };
+  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i), '/api/scrum-log': i => logScrum(i) };
   if (actions[url.pathname]) {
     const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '');
     if (HOSTED || req.method !== 'POST' || req.headers['x-magician-hub'] !== '1' || !local) return sendJson(res, 403, { error: 'Not allowed.' });
@@ -1044,8 +1063,8 @@ const server = http.createServer(async (req, res) => {
       const person = q('person').toLowerCase();
       if (!team.has(person)) return { error: 'Pick your name at the top right first.' };
       if (!JIRA_MODE || jiraError) return { error: jiraError || 'Jira is not connected.' };
-      if (q('refresh')) timeCache.delete(person);
-      return timeFor(person);
+      if (q('refresh')) forgetTime(person);
+      return timeFor(person, q('from'));   // from: YYYY-MM-DD, at most 92 days back
     }
   };
   if (tools[url.pathname]) {

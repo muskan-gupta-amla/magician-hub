@@ -82,6 +82,7 @@ globalThis.fetch = async (url, opts) => {
       issue('Z10-7', 'Fixed earlier', 'Done', 'done', 'asha.rao@amla.io')];
     if (jql.startsWith('assignee = currentUser()')) return reply({ issues: [] });
     if (jql.startsWith('cf[10117] = "Magicians"')) return reply({ issues: teamAnswer.map((a, i) => issue(`Z10-${900 + i}`, 'Team ticket', 'Done', 'done', a)) });
+    if (jql.includes('Daily Stand-ups')) return reply({ issues: [issue('Z10-60', '10x - Daily Stand-ups', 'Open', 'new', null)] });   // the current stand-up ticket
     if (jql.includes('sprint in openSprints()')) {   // the Daily Scrum's sprint card
       const sprint = { id: 20, name: 'Magicians Sprint 20', state: 'active', startDate: '2026-10-05T00:00:00Z', endDate: '2026-10-26T00:00:00Z', goal: '' };
       return reply({ issues: [['Z10-2', 'indeterminate'], ['Z10-7', 'done'], ['Z10-50', 'new']].map(([key, cat]) =>
@@ -89,6 +90,7 @@ globalThis.fetch = async (url, opts) => {
     }
     if (jql.includes('statusCategoryChangedDate')) return reply({ issues: all.filter(i => i.key === 'Z10-2') });
     if (jql.startsWith('worklogAuthor = "asha.rao@amla.io"')) return reply({ issues: all.filter(i => ['Z10-2', 'Z10-7'].includes(i.key)) });
+    if (jql.startsWith('worklogAuthor = ')) return reply({ issues: [] });   // anyone else (the hub's own login): no logs yet
     if (new URL(url).searchParams.get('fields').includes('timetracking')) {
       const ago = days => new Date(Date.now() - days * 864e5).toISOString(), log = (who, days, seconds, text) =>
         ({ author: { emailAddress: who }, started: ago(days), timeSpentSeconds: seconds, comment: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] } });
@@ -333,6 +335,16 @@ test('log time: writes the worklog to Jira as you, with date and comment', async
   assert.equal(w.comment.content[0].content[0].text, 'Fixed tax rounding');
   const s = (await api('/api/state', {})).body;
   assert.equal(s.canLogTime, 'hub@amla.io');   // whose time a Log writes
+});
+
+test('daily scrum in one click: 30m on the current stand-up ticket, once a day', async () => {
+  const before = worklogs.length;
+  const res = await postJson('/api/scrum-log', {}), r = res.body;
+  assert.equal(res.status, 200, JSON.stringify(r));
+  assert.deepEqual([r.ok, r.key, r.seconds, r.summary], [true, 'Z10-60', 1800, '10x - Daily Stand-ups']);
+  assert.equal(worklogs.length, before + 1);
+  assert.equal(worklogs.at(-1).comment.content[0].content[0].text, 'Magicians Daily Scrum');
+  assert.equal((await postJson('/api/scrum-log', {}, {})).status, 403);   // no hub header: another website
 });
 
 test('log time: refuses bad input, the future, unknown tickets and other websites', async () => {
