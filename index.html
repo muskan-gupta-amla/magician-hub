@@ -13,7 +13,7 @@
     --fg:#191726; --fg-2:#4B4762; --muted:#7A7592;
     --brand:#5B3CC4; --brand-2:#7B5CF0; --brand-bg:#EEE9FD;
     --ok:#13804A; --ok-bg:#E2F5EA; --bad:#C2361F; --bad-bg:#FCE7E3; --warn:#A15C00; --warn-bg:#FDF0DA; --info:#2563B0; --info-bg:#E3EEFB;
-    --shadow:0 1px 2px rgba(25,23,38,.05), 0 10px 28px -16px rgba(25,23,38,.18);
+    --shadow:0 1px 2px rgba(25,23,38,.05), 0 10px 28px -16px rgba(25,23,38,.18); --on-brand:#FFFFFF;
     --font:"Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif; --mono:"JetBrains Mono", Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
@@ -21,13 +21,13 @@
     --fg:#ECEAF6; --fg-2:#C3BFD8; --muted:#8E89A8;
     --brand:#A48BFF; --brand-2:#7B5CF0; --brand-bg:#2A2248;
     --ok:#4ED38A; --ok-bg:#16301F; --bad:#FF8574; --bad-bg:#3A1A17; --warn:#F2B35B; --warn-bg:#382910; --info:#7DB3FF; --info-bg:#172A44;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7); color-scheme:dark; } }
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7); --on-brand:#14102A; color-scheme:dark; } }
   :root[data-theme="dark"] {
     --bg:#0F0E17; --panel:#17161F; --panel-2:#1F1D2B; --line:#2C2A3B; --line-2:#242233;
     --fg:#ECEAF6; --fg-2:#C3BFD8; --muted:#8E89A8;
     --brand:#A48BFF; --brand-2:#7B5CF0; --brand-bg:#2A2248;
     --ok:#4ED38A; --ok-bg:#16301F; --bad:#FF8574; --bad-bg:#3A1A17; --warn:#F2B35B; --warn-bg:#382910; --info:#7DB3FF; --info-bg:#172A44;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7); color-scheme:dark; }
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7); --on-brand:#14102A; color-scheme:dark; }
 
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 var(--font); -webkit-font-smoothing:antialiased; }
@@ -81,9 +81,10 @@
   /* Controls */
   .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--line); background:var(--panel); color:var(--fg-2);
     border-radius:10px; padding:7px 12px; font:600 13px var(--font); cursor:pointer; text-decoration:none; white-space:nowrap; }
-  .btn:hover { border-color:var(--brand); color:var(--brand); }
-  .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
-  .btn.primary:hover { filter:brightness(1.08); color:#fff; }
+  .btn:hover:not(:disabled) { border-color:var(--brand); color:var(--brand); }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn.primary { background:var(--brand); border-color:var(--brand); color:var(--on-brand); }
+  .btn.primary:hover:not(:disabled) { filter:brightness(1.08); color:var(--on-brand); }
   .btn.sm { padding:3px 10px; font-size:12px; border-radius:8px; }
   .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; background:var(--panel); border:1px solid var(--line);
     border-radius:14px; padding:12px 14px; box-shadow:var(--shadow); }
@@ -98,7 +99,7 @@
   .kpis { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; }
   .kpi { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; display:grid; gap:10px;
     box-shadow:var(--shadow); color:inherit; text-decoration:none; transition:transform .15s, border-color .15s; }
-  .kpi:hover { transform:translateY(-2px); border-color:var(--brand); }
+  a.kpi:hover { transform:translateY(-2px); border-color:var(--brand); }
   .kpi .top { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-weight:700; font-size:12.5px; }
   .kpi .ico { width:32px; height:32px; border-radius:10px; display:grid; place-items:center; background:var(--ok-bg); color:var(--ok); }
   .kpi .n { font-size:32px; font-weight:800; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
@@ -269,7 +270,7 @@
   /* Alerts: banners with an icon, toasts that slide in and show how long they stay */
   .err { border:1px solid color-mix(in srgb, var(--bad) 25%, transparent); border-left:4px solid var(--bad); padding:12px 16px; }
   .err::before { content:"!"; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; flex:none;
-    background:var(--bad); color:#fff; font:800 13px var(--font); }
+    background:var(--bad); color:var(--on-brand); font:800 13px var(--font); }
   .err.pick { border-color:color-mix(in srgb, var(--brand) 25%, transparent); border-left-color:var(--brand); }
   .err.form::before { display:none; }
   .err.pick::before { content:"i"; background:var(--brand); font-family:Georgia, serif; font-style:italic; }
@@ -279,6 +280,7 @@
   .toast::after { content:""; position:absolute; left:0; bottom:0; height:3px; width:100%; background:var(--brand); opacity:.5;
     transform-origin:left; animation:toastLife 10s linear forwards; }
   .toast:hover { border-color:var(--brand); }
+  .toast:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .toast b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   @keyframes toastIn { from { opacity:0; transform:translateY(12px) scale(.98); } }
   @keyframes toastLife { to { transform:scaleX(0); } }
@@ -373,7 +375,7 @@
   .tkinfo { flex:1 0 100%; order:5; display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; font-size:12.5px; color:var(--fg-2); min-height:0; }
   .tkinfo:empty { display:none; }
   .tkinfo .nolog { display:inline-flex; align-items:center; gap:8px; color:var(--warn); font-weight:600; }
-  .tkinfo .nolog::before { content:"!"; width:16px; height:16px; border-radius:50%; background:var(--warn); color:#fff; display:inline-grid; place-items:center; font-size:11px; font-weight:800; flex:none; }
+  .tkinfo .nolog::before { content:"!"; width:16px; height:16px; border-radius:50%; background:var(--warn); color:var(--on-brand); display:inline-grid; place-items:center; font-size:11px; font-weight:800; flex:none; }
   #tmLogForm .btn.primary:disabled { opacity:.45; cursor:not-allowed; filter:none; }
   .tkinfo .est { display:inline-flex; gap:6px; align-items:center; }
   .tkinfo .est input { width:84px; font:500 13px var(--font); padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
@@ -384,12 +386,12 @@
   .status.bad { background:var(--bad-bg); color:var(--bad); border-radius:10px; flex:1 0 100%; order:6; }
   .status.busy { background:var(--panel-2); color:var(--fg-2); }
   .status.ok::before { content:"✓"; font-weight:800; }
-  .status.bad::before { content:"!"; width:16px; height:16px; border-radius:50%; background:var(--bad); color:#fff; display:inline-grid; place-items:center; font-size:11px; font-weight:800; flex:none; }
+  .status.bad::before { content:"!"; width:16px; height:16px; border-radius:50%; background:var(--bad); color:var(--on-brand); display:inline-grid; place-items:center; font-size:11px; font-weight:800; flex:none; }
   @media (max-width:700px) { .weekchart { grid-template-columns:1fr; } .day { grid-template-columns:64px minmax(0,1fr) 92px; } }
   @media (prefers-reduced-motion: reduce) { .toast, .toast::after { animation:none; } td, .panel { transition:none; } }
 
   @media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
-  @media (max-width:700px) { .kpis, .kpis.four { grid-template-columns:1fr; } .day { grid-template-columns:72px minmax(0,1fr) 60px; } }
+  @media (max-width:700px) { .kpis, .kpis.four { grid-template-columns:1fr; } }
   @media (max-width:860px) {
     .app { grid-template-columns:minmax(0,1fr); }   /* never wider than the screen, whatever the content */
     aside.side { position:static; height:auto; flex-direction:row; flex-wrap:wrap; align-items:center; gap:12px; padding:12px 16px;
@@ -534,7 +536,7 @@
             <tbody id="fixPrs"></tbody></table></div>
         </div>
         <div class="panel">
-          <div class="panel-h"><h2>Builds</h2><span class="muted">last 14 days</span></div>
+          <div class="panel-h"><h2>Builds</h2><span class="muted" id="fixBuildDays">last 14 days</span></div>
           <div class="tbl"><table>
             <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
             <tbody id="fixBuilds"></tbody></table></div>
@@ -884,18 +886,18 @@ function jiraPill(t, prOpen) {
   return p;
 }
 // The viewer's own open Jira tickets, fetched from the hub when they look (it caches for 5 minutes).
-const myJira = { person: null, at: 0, list: null, error: null, loading: false };
+const myJira = { person: null, at: 0, list: null, error: null, loading: false };   // loading: the person being fetched
 const myJiraList = () => (myJira.person === viewer() ? myJira.list : null);
 async function loadMyJira(force) {
   const v = viewer();
-  if (!v || !state || !state.jiraOn || myJira.loading) return;
+  if (!v || !state || !state.jiraOn || myJira.loading === v) return;
   if (!force && myJira.person === v && Date.now() - myJira.at < 300000) return;
-  myJira.loading = true;
+  myJira.loading = v;
   try {
     const res = await fetch('/api/jira-mine?' + new URLSearchParams({ person: v })), d = await res.json();
-    Object.assign(myJira, { person: v, at: Date.now(), list: res.ok ? d.tickets : null, error: res.ok ? null : d.error });
-  } catch (e) { myJira.error = 'Hub is not running.'; }
-  myJira.loading = false;
+    if (viewer() === v) Object.assign(myJira, { person: v, at: Date.now(), list: res.ok ? d.tickets : null, error: res.ok ? null : d.error });
+  } catch (e) { if (viewer() === v) myJira.error = 'Hub is not running.'; }
+  if (myJira.loading === v) myJira.loading = false;
   render();
 }
 function openTicket(key) { location.hash = 'fix'; show('fix'); $('fixKey').value = key; $('fixForm').requestSubmit(); }
@@ -946,11 +948,13 @@ function prRow(body, p) {
 }
 
 function fillSelect(id, values, label) {
-  const sel = $(id);
-  if (sel.dataset.filled) return;
-  values.forEach(v => { const o = el('option', null, label(v)); o.value = v; sel.append(o); });
-  sel.dataset.filled = '1';
-  try { sel.value = localStorage.getItem('hub.' + id) || ''; } catch (e) {}
+  const sel = $(id), key = values.join('|');
+  if (sel.dataset.filled === key) return;
+  const keep = sel.dataset.filled ? sel.value : store.get('hub.' + id) || '';
+  sel.querySelectorAll('option[data-dyn]').forEach(o => o.remove());   // the fixed first options (Everyone, Me ...) stay
+  values.forEach(v => { const o = el('option', null, label(v)); o.value = v; o.dataset.dyn = '1'; sel.append(o); });
+  sel.dataset.filled = key;
+  sel.value = keep; if (sel.value !== keep) sel.value = '';
 }
 
 function filtered(d) {
@@ -978,9 +982,13 @@ function personalise(d) {
   d.email = v;
   d.runs.forEach(r => { r.mine = !!v && r.author === v; });
   d.reviewQueue = d.requests.filter(p => p.reviewers.some(isMe));
-  d.changesRequested = d.prs.filter(p => isMe(p.author) && p.review === 'changes');
+  d.changesRequested = d.prs.filter(p => isMe(p.author) && p.review === 'changes' && !whyParked(p));
   const me = $('fMe');
-  if (!me.dataset.filled) { d.team.forEach(e => { const o = el('option', null, personName(e)); o.value = e; me.append(o); }); me.dataset.filled = '1'; }
+  if (me.dataset.filled !== d.team.join('|')) {   // refilled when the team list changes (it comes from Jira after start)
+    me.querySelectorAll('option[data-dyn]').forEach(o => o.remove());
+    d.team.forEach(e => { const o = el('option', null, personName(e)); o.value = e; o.dataset.dyn = '1'; me.append(o); });
+    me.dataset.filled = d.team.join('|');
+  }
   me.value = v; me.disabled = !!(d.signedIn && d.viewer);   // signed in: the hub already knows who you are
   $('pickMe').hidden = !!v;
 }
@@ -991,16 +999,24 @@ $('fMe').addEventListener('input', async () => {
   if (view === 'time') loadTime();
 });
 
+let loadSeq = 0;
 async function load() {
-  const first = !state;
-  try { state = await (await fetch('/api/state')).json(); }
+  const first = !state, seq = ++loadSeq, before = state && state.lastPoll;
+  let next;
+  try { next = await (await fetch('/api/state')).json(); }
   catch (e) { $('meta').textContent = 'Hub is not running'; $('liveDot').classList.add('off'); return; }
+  if (seq !== loadSeq) return;   // a newer answer already arrived
+  state = next;
   fillSelect('fWho', state.team, personName);
   fillSelect('fRepo', state.repos, shortRepo);
   if (state.lastPoll) fillSelect('fBase', [...new Set(state.prs.map(p => p.base))].sort(), b => b);
   personalise(state);
   handleEvents(state.events);
-  render();
+  // Nothing new and you are tabbing through the page: keep your place (redrawing would drop keyboard focus)
+  const focus = document.activeElement;
+  if (!first && state.lastPoll === before && focus && focus !== document.body && document.querySelector('main').contains(focus) && !/^(INPUT|SELECT|TEXTAREA)$/.test(focus.tagName))
+    $('meta').textContent = state.lastPoll ? 'Live · checked ' + ago(state.lastPoll) : 'Checking GitHub…';
+  else render();
   loadMyJira();
   if (first && view === 'standup') loadStandup();   // opened straight on these pages: load once we know who is looking
   if (first && view === 'time') loadTime();
@@ -1083,7 +1099,7 @@ function renderOverview(d, activePrs) {
       const right = el('span', 'r'); right.append(pill(t.status, JIRA_CAT[t.cat] || 's-off'));
       listItem(mj, el('span', 'chip', t.key), t.summary, `${t.type} · ${t.priority} · ${open ? open + ' open PR' + (open > 1 ? 's' : '') : 'no PR yet'}`, right);
       const row = mj.lastChild; row.classList.add('clickable'); row.tabIndex = 0; row.setAttribute('role', 'button');
-      row.onclick = () => openTicket(t.key); row.onkeydown = e => { if (e.key === 'Enter') openTicket(t.key); };
+      row.onclick = () => openTicket(t.key); row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTicket(t.key); } };
     });
     if (myJiraList() && !mineJ.length) emptyBox(mj, 'No open Jira tickets assigned to you');
     else if (mineJ.length > 8) mj.append(el('div', 'emptyst', `${mineJ.length - 8} more: Open in Jira`));
@@ -1164,7 +1180,7 @@ function renderEnvs(d) {
       if (last.failed) card.append(el('div', 'err-line', last.failed));
       const day = list.filter(x => Date.now() - new Date(x.at) < DAY).length;
       if (list.length > 1) card.append(el('div', 'prev', `${day} deploy${day === 1 ? '' : 's'} in 24h · before: ${personName(list[1].who)}${list[1].branch ? ' (' + list[1].branch + ')' : ''} ${ago(list[1].at)}`));
-    } else card.append(el('div', 'prev', `None in the last ${3} days`));
+    } else card.append(el('div', 'prev', `None in the last ${d.deployDays || 3} days`));
     box.append(card);
   });
   $('envs').closest('.panel').hidden = !envs.length;
@@ -1185,7 +1201,8 @@ $('fixForm').addEventListener('submit', async e => {
     if (!res.ok) { msg.className = 'hint err-t'; msg.textContent = d.error; return; }
   } catch (err) { msg.className = 'hint err-t'; msg.textContent = 'Hub is not running.'; return; }
   // Builds whose branch carries the ticket key (Z10-123, z10_123 ...), from the hub's 14 days of team builds.
-  const k = d.key.toLowerCase(), builds = state ? state.runs.filter(r => r.branch.toLowerCase().replace(/[_ ]/g, '-').includes(k)) : [];
+  const keyRe = new RegExp(`(^|[^0-9a-z])${d.key.toLowerCase().replace(/-/g, '[-_ ]')}([^0-9]|$)`);
+  const builds = state ? state.runs.filter(r => keyRe.test(r.branch.toLowerCase())) : [];
   if (!d.rows.length && !d.pulls.length && !builds.length && !d.jira) { msg.textContent = 'Nothing found for ' + d.key + '.'; return; }
   msg.textContent = '';
   $('fixKeyLabel').textContent = d.jira ? `${d.key} · ${d.jira.summary}` : d.key;
@@ -1196,8 +1213,9 @@ $('fixForm').addEventListener('submit', async e => {
     if (d.jira.assignee) info.append(who(d.jira.assignee));
   } else info.append(el('span', 'muted', state && state.jiraOn ? 'Not found in Jira (or you cannot see it).' : 'Jira not connected: open it in Jira for its status.'));
   $('fixImpact').onclick = () => { location.hash = 'impact'; $('impPr').value = d.key; $('impForm').requestSubmit(); };
+  $('fixBuildDays').textContent = `last ${state.buildDays || 14} days`;
   const fb = $('fixBuilds');
-  if (!builds.length) emptyRow(fb, 'No team builds in the last 14 days', '', 4); else fb.textContent = '';
+  if (!builds.length) emptyRow(fb, `No team builds in the last ${state.buildDays || 14} days`, '', 4); else fb.textContent = '';
   builds.forEach(r => buildRow(fb, r));
   const head = $('fixHead'); head.textContent = '';
   const hr = head.insertRow(); hr.append(el('th', null, 'Repo'));
@@ -1392,13 +1410,13 @@ $('suCopy').addEventListener('click', e => copyText(scrumText, e.currentTarget))
 const fmtH = sec => { const m = Math.round((sec || 0) / 60), h = Math.floor(m / 60); return h && m % 60 ? `${h}h ${m % 60}m` : h ? `${h}h` : `${m % 60}m`; };
 const dayKey = d => new Date(d).toLocaleDateString('en-CA');
 const weekStart = (offset = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7); return d; };   // Monday
-let myTime = null;
+let myTime = null, timeShownFor = null;   // timeShownFor: whose hours the Time Log page is showing
 async function loadTime(refresh) {
   const v = viewer();
   $('tmTitle').textContent = v ? personName(v) + "'s time log" : 'Time Log';
   if (!state) return;   // load() calls again once the data is in
   if (!v) { $('tmMsg').textContent = 'Pick your name at the top right first.'; $('tmOut').hidden = true; return; }
-  if (!refresh && myTime && myTime.person === v && $('tmOut').hidden === false) return;
+  if (!refresh && timeShownFor === v && $('tmOut').hidden === false) return;
   const d = await tool('/api/time', refresh ? { person: v, refresh: 1 } : { person: v }, $('tmMsg'));
   if (!d || viewer() !== v) return;
   myTime = d;
@@ -1434,12 +1452,14 @@ async function loadTime(refresh) {
   }
 }
 function renderTime(d) {
+  timeShownFor = d.person;
   const mon = weekStart(), lastMon = weekStart(-1), today = dayKey(Date.now());
   const sum = list => list.reduce((n, e) => n + e.seconds, 0);
   const thisWeek = d.entries.filter(e => new Date(e.started) >= mon), lastWeek = d.entries.filter(e => new Date(e.started) >= lastMon && new Date(e.started) < mon);
   const todaySec = sum(d.entries.filter(e => dayKey(e.started) === today)), weekSec = sum(thisWeek), target = d.weekHours * 3600;
   const over = d.tickets.filter(t => t.estimate && t.spent > t.estimate);
-  kpi('k-today', fmtH(todaySec), todaySec ? `${d.entries.filter(e => dayKey(e.started) === today).length} log(s)` : 'nothing logged yet', todaySec ? '' : 'warn');
+  const todayLogs = d.entries.filter(e => dayKey(e.started) === today).length;
+  kpi('k-today', fmtH(todaySec), todaySec ? `${todayLogs} log${todayLogs === 1 ? '' : 's'}` : 'nothing logged yet', todaySec ? '' : 'warn');
   kpi('k-week', fmtH(weekSec), `of ${d.weekHours}h (${Math.round(weekSec / target * 100)}%)`, '');
   kpi('k-last', fmtH(sum(lastWeek)), `of ${d.weekHours}h`, '');
   kpi('k-over', over.length, 'open tickets', over.length ? 'alert' : '');
@@ -1557,6 +1577,7 @@ async function showTicketInfo(force) {
   }
   if ($('tmKey').value !== key) return;   // picked another ticket meanwhile
   const t = ticketInfo[key]; box.textContent = '';
+  if (!t) return;   // another lookup for this ticket failed meanwhile
   const logBtn = $('tmLogForm').querySelector('button[type="submit"]');
   logBtn.disabled = t.canLog === false;
   if (t.error) { delete ticketInfo[key]; return; }   // nothing to offer; logging still works

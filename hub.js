@@ -1024,7 +1024,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { hosted: HOSTED, viewer, signedIn: !!signedIn, team: [...team].sort(), repos: cfg.repos, owner: cfg.owner,
       jira: cfg.jiraUrl, links: cfg.links, ticketPrefixes: cfg.ticketPrefixes, jiraOn: !!JIRA_MODE && !jiraError && lastJira > 0, jiraError, jiraNeedsToken, jiraKeys,
       teamInfo, canLogTime: !HOSTED && JIRA_MODE === 'api' && !jiraNeedsToken ? jiraAuth.email : null,   // whose time a "Log" writes
-      deployEnvs: cfg.deployEnvs || [], deploys: [...deploys.values()].sort((a, b) => b.at.localeCompare(a.at)),
+      deployEnvs: cfg.deployEnvs || [], deployDays: cfg.deployDays || 3, buildDays: cfg.buildDays || 14, deploys: [...deploys.values()].sort((a, b) => b.at.localeCompare(a.at)),
       lastPoll, lastError, runs: list, prs, requests, events });
   }
   const q = name => (url.searchParams.get(name) || '').trim();
