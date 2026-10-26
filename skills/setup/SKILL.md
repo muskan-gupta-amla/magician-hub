@@ -15,5 +15,5 @@ Set up Magician Hub for the user. Be brief. Never ask for a token or password: t
 4. Finish in a few lines:
    - Page: http://localhost:4545 (bookmark it). Pick your name at the top if it is not already chosen.
    - Popups: Windows popups are on; for browser alerts click **Turn on browser alerts** in the sidebar.
-   - Jira: on the Time page, paste your Jira API token once if it asks (link there). It stays on your PC.
+   - Jira: paste your Jira API token in the box at the top of the page ("Get a token" link there). It loads the Magicians team; until then the hub shows only your own work. The token stays on your PC.
    - Any time later: `/magician-hub:start` opens it (and starts it if it stopped). After a plugin update: `/magician-hub:start restart`.

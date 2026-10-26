@@ -36,7 +36,8 @@ function runAuthor(r) {
 
 const runs = new Map();   // run id -> run summary shown on the page
 const reasons = new Map();   // failed run id -> why it failed, looked up once
-let seeded = false;       // first poll fills the list without popups
+let seeded = false;
+let refetchRuns = false, quiet = false;   // re-read the whole build window once (team changed), with no popups       // first poll fills the list without popups
 let token = null;         // Git login (local) or GITHUB_TOKEN (hosted), kept in memory only
 let email = null;         // local mode: you (Windows popups are yours only); hosted: null
 let lastError = null;
@@ -138,7 +139,7 @@ const skipMissing = repo => e => {
 async function pollRepo(repo) {
   // The full window on start, then only the newest page each poll.
   const since = encodeURIComponent('>=' + buildSince().slice(0, 10));
-  const list = await ghAll(`/repos/${cfg.owner}/${repo}/actions/runs?created=${since}`, seeded ? 1 : 20, x => x.workflow_runs).catch(skipMissing(repo));
+  const list = await ghAll(`/repos/${cfg.owner}/${repo}/actions/runs?created=${since}`, seeded && !quiet ? 1 : 20, x => x.workflow_runs).catch(skipMissing(repo));
   // Runs still in progress that have dropped off the newest page.
   const seen = new Set(list.map(r => r.id));
   for (const run of [...runs.values()]) {
@@ -156,7 +157,7 @@ async function pollRepo(repo) {
     };
     if (run.conclusion === 'failure' && !reasons.has(r.id)) reasons.set(r.id, run.reason = await failureReason(repo, r.id));
     runs.set(r.id, run);
-    if (!seeded) continue;   // the first check only loads data
+    if (!seeded || quiet) continue;   // the first check (and a re-read) only loads data
     const label = `${shortRepo(repo)}${keysIn(r.head_branch || '').slice(0, 1).map(k => ' ' + k).join('')}`;   // "webstore Z10-41122"
     if (!prev && r.status !== 'completed') {
       notify(author, `${label}: build started`, `${r.head_branch} · ${r.name}`, r.html_url);
@@ -365,6 +366,7 @@ async function syncTeam() {
     found.forEach(i => { if (i.assignee) count[i.assignee] = (count[i.assignee] || 0) + 1; });
     const list = Object.keys(count).filter(e => count[e] >= (cfg.teamMinTickets || 5)).sort();
     if (list.length < 3) return null;   // a bad answer from Jira must not empty the team
+    if (list.join() !== [...team].sort().join()) refetchRuns = true;   // new people: read their last builds too, without popups
     setTeam(list);
     teamInfo = { source: 'jira', at: new Date().toISOString() };
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -607,6 +609,7 @@ async function connectJira(email, token) {
   jiraAuth = candidate; JIRA_MODE = 'api'; jiraError = null; jiraNeedsToken = false;
   timeCache.clear(); jiraMine.clear(); lastJira = 0;
   await pollJira();
+  await syncTeam();   // the Magicians team list comes from Jira: load it now
   return { ok: true, name: me.displayName || candidate.email };   // never send the token back
 }
 async function jiraTicket(key) {
@@ -970,6 +973,7 @@ async function poll() {
   if (polling) return;
   polling = true;
   try {
+    quiet = refetchRuns; refetchRuns = false;
     await Promise.all(cfg.repos.map(pollRepo));
     await pollDeploys().catch(e => console.error('Deploys:', e.message));   // own errors; never stops the builds
     await pollPrs();
@@ -1107,6 +1111,8 @@ if (require.main === module) (async () => {
       lastError = 'No GitHub login found. Clone or pull any MRRSoft repo once with Git, then restart the hub.';
       return console.error(lastError);
     }
+    // No team list yet (Jira not connected): show only your own work, never everyone's. Jira replaces it.
+    if (!team.size && email) { setTeam([email]); teamInfo = { source: 'you', at: null }; }
     console.log(`Watching builds for ${email || 'everyone'}`);
   }
   poll();

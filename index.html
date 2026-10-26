@@ -454,6 +454,7 @@
     </div>
     <div class="err pick" id="pickMe" hidden>Pick your name at the top right to see your PRs, review requests and alerts.</div>
     <div class="err" id="err" hidden></div>
+    <div class="err pick form" id="teamBanner" hidden></div>
 
     <!-- Filters shared by Team PRs and Builds -->
     <div class="toolbar" id="toolbar" role="search" aria-label="Filters" hidden>
@@ -1011,6 +1012,13 @@ function personalise(d) {
   }
   me.value = v; me.disabled = !!(d.signedIn && d.viewer);   // signed in: the hub already knows who you are
   $('pickMe').hidden = !!v;
+  const banner = $('teamBanner'), noTeam = !d.hosted && d.teamInfo && d.teamInfo.source === 'you';
+  if (noTeam && !banner.childElementCount) {
+    const text = el('div'); text.append(el('b', null, 'Showing only your own work. '), 'The Magicians team list comes from Jira: paste your Jira API token once to load the whole team.');
+    banner.style.display = 'grid'; banner.style.gap = '6px';
+    banner.append(text, ...jiraTokenForm('Loading the Magicians team…'));
+  }
+  banner.hidden = !noTeam;
 }
 $('fMe').addEventListener('input', async () => {
   store.set('hub.me', $('fMe').value); personalise(state); render();
@@ -1135,7 +1143,7 @@ function render() {
   if (!d) return;
   $('liveDot').classList.toggle('off', !!d.lastError);
   $('meta').textContent = d.lastPoll ? 'Live · checked ' + ago(d.lastPoll) : 'Checking GitHub…';
-  $('meta2').textContent = (d.hosted ? 'Team server' : 'On this PC') + ' · ' + (d.team.length ? d.team.length + ' people' : 'everyone')
+  $('meta2').textContent = (d.hosted ? 'Team server' : 'On this PC') + ' · ' + (d.teamInfo && d.teamInfo.source === 'you' ? 'team not loaded' : d.team.length === 1 ? '1 person' : d.team.length ? d.team.length + ' people' : 'everyone')
     + (d.teamInfo && d.teamInfo.source === 'jira' ? ' (from Jira)' : '') + ' · Jira ' + (d.jiraOn ? 'on' : 'off');
   $('err').hidden = !d.lastError; $('err').textContent = d.lastError || '';
 
@@ -1486,26 +1494,30 @@ async function loadTime(refresh) {
     if (state.jiraNeedsToken) box.append(el('b', null, 'Your Jira token stopped working'));
     box.style.display = 'grid'; box.style.gap = '6px'; box.style.marginTop = '10px';
     // Busy shared tickets need the Jira API (acli returns only 20 logs): just ask for the token.
-    const form = el('form', 'row'), tokenIn = el('input'), go = el('button', 'btn primary', 'Connect'), note = el('span', 'muted');
-    tokenIn.type = 'password'; tokenIn.placeholder = 'Paste your Jira API token'; tokenIn.autocomplete = 'off'; tokenIn.setAttribute('aria-label', 'Jira API token');
-    tokenIn.style.cssText = 'flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);font:500 13.5px var(--mono)';
-    go.type = 'submit';
-    form.append(tokenIn, go, link('Get a token', 'https://id.atlassian.com/manage-profile/security/api-tokens'));
-    form.addEventListener('submit', async ev => {
-      ev.preventDefault(); go.disabled = true; note.textContent = 'Checking with Jira…';
-      try {
-        const res = await fetch('/api/jira-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
-          body: JSON.stringify({ email: viewer(), token: tokenIn.value }) });
-        const r = await res.json();
-        tokenIn.value = '';
-        if (!res.ok) { note.textContent = r.error; go.disabled = false; return; }
-        note.textContent = `Connected as ${r.name}. Counting every log…`;
-        await load(); await loadMyJira(true); await loadTime(true);
-      } catch (e) { note.textContent = 'Hub is not running.'; go.disabled = false; }
-    });
-    box.append(form, note);
+    box.append(...jiraTokenForm('Counting every log…'));
     msg.append(box);
   }
+}
+// Jira API token form: checked with Jira, kept in your Windows profile, never sent back. Connecting also loads the Magicians team.
+function jiraTokenForm(doneText) {
+  const form = el('form', 'row'), tokenIn = el('input'), go = el('button', 'btn primary', 'Connect'), note = el('span', 'muted');
+  tokenIn.type = 'password'; tokenIn.placeholder = 'Paste your Jira API token'; tokenIn.autocomplete = 'off'; tokenIn.setAttribute('aria-label', 'Jira API token');
+  tokenIn.style.cssText = 'flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);font:500 13.5px var(--mono)';
+  go.type = 'submit';
+  form.append(tokenIn, go, link('Get a token', 'https://id.atlassian.com/manage-profile/security/api-tokens'));
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault(); go.disabled = true; note.textContent = 'Checking with Jira…';
+    try {
+      const res = await fetch('/api/jira-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
+        body: JSON.stringify({ email: viewer(), token: tokenIn.value }) });
+      const r = await res.json();
+      tokenIn.value = '';
+      if (!res.ok) { note.textContent = r.error; go.disabled = false; return; }
+      note.textContent = `Connected as ${r.name}. ${doneText}`;
+      await load(); await loadMyJira(true); if (view === 'time') await loadTime(true); if (view === 'standup') loadStandup();
+    } catch (e) { note.textContent = 'Hub is not running.'; go.disabled = false; }
+  });
+  return [form, note];
 }
 function renderTime(d) {
   timeShownFor = d.person;

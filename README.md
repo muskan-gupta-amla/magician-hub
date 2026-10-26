@@ -69,7 +69,7 @@ To start with Windows, add a shortcut to `node "C:\path\to\magician-hub\hub.js"`
 |---|---|
 | `repos`, `owner` | Repos to watch |
 | `email` | Whose builds get popups. Empty = `git config user.email` |
-| `team` | Leave empty: the hub reads the team from Jira shortly after it starts and daily after that (everyone with at least `teamMinTickets` tickets where `teamField` = `teamName` in the last `teamDays` days) and saves it in `%APPDATA%\MagicianHub\team.json`. Until Jira is connected, everyone's builds and PRs show. `teamSync: false` keeps a list you type here |
+| `team` | Leave empty: until Jira is connected the hub shows only your own work (with a banner asking for your Jira API token), then it reads the team from Jira and daily after that (everyone with at least `teamMinTickets` tickets where `teamField` = `teamName` in the last `teamDays` days) and saves it in `%APPDATA%\MagicianHub\team.json`. `teamSync: false` keeps a list you type here |
 | `trackBranches` | Branches checked by "Where's my fix" |
 | `buildDays` | Builds from the last this many days are shown; bot runs are skipped (14) |
 | `weekHours` | Hours a week the Time page and the Friday reminder measure against (40) |
