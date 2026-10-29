@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execFile, exec } = require('child_process');
+const crypto = require('crypto');
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
 const HOSTED = !!process.env.GITHUB_TOKEN;
@@ -17,8 +18,12 @@ const REQUIRE_SIGNIN = HOSTED && process.env.REQUIRE_SIGNIN !== 'false';
 const HUB_URL = `http://localhost:${PORT}`;
 // The team: config.json's list to start with, then refreshed daily from Jira (see syncTeam). Empty = everyone.
 let team, loginPrefixes;
+// People who work for another team but pick up Magicians tickets: config teamExclude lists a fingerprint of each email
+// (first 16 hex of sha256), so no names are in the public repo.
+const teamFingerprint = e => crypto.createHash('sha256').update(e.toLowerCase()).digest('hex').slice(0, 16);
+const excluded = new Set(cfg.teamExclude || []);
 function setTeam(list) {
-  team = new Set(list.map(e => e.toLowerCase()));
+  team = new Set(list.map(e => e.toLowerCase()).filter(e => !excluded.has(teamFingerprint(e))));
   loginPrefixes = [...team].map(e => e.split('@')[0].replace(/\./g, '-'));   // GitHub logins follow first.last@ -> first-last-amla
 }
 setTeam(cfg.team || []);
@@ -364,7 +369,7 @@ async function syncTeam() {
     const found = await jiraSearch(`${cfg.teamField} = "${cfg.teamName}" AND updated >= -${cfg.teamDays || 90}d AND assignee is not EMPTY`, 5000);
     const count = {};
     found.forEach(i => { if (i.assignee) count[i.assignee] = (count[i.assignee] || 0) + 1; });
-    const list = Object.keys(count).filter(e => count[e] >= (cfg.teamMinTickets || 5)).sort();
+    const list = Object.keys(count).filter(e => count[e] >= (cfg.teamMinTickets || 5) && !excluded.has(teamFingerprint(e))).sort();
     if (list.length < 3) return null;   // a bad answer from Jira must not empty the team
     if (list.join() !== [...team].sort().join()) refetchRuns = true;   // new people: read their last builds too, without popups
     setTeam(list);

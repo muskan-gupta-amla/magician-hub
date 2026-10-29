@@ -77,6 +77,7 @@ To start with Windows, add a shortcut to `node "C:\path\to\magician-hub\hub.js"`
 | `prNudgeTime`, `staleNudgeTime` | When PR nudges ("12:00") and the stale PR list ("Mon 10:00") go out |
 | `timeReminder` | When to remind people under `weekHours` ("Fri 16:00", local time) |
 | `teamField`, `teamName`, `teamDays`, `teamMinTickets` | How the team list is found in Jira (`cf[10117]`, `Magicians`, 90, 5) |
+| `teamExclude` | People to leave out although they pick up Magicians tickets (they work for another team). Each entry is a fingerprint of the email, not the name: `node -e "console.log(require('crypto').createHash('sha256').update('first.last@amla.io').digest('hex').slice(0,16))"` |
 | `staleDays` | Days without activity before a PR is parked (30) |
 | `pollSeconds` | How often to check GitHub (60) |
 | `windowsPopups` | `false` = browser alerts only |
