@@ -782,13 +782,13 @@
         <div class="hint" id="impMsg">Answers three questions for a PR or a ticket: is it safe to merge, which areas are affected, and what could break (procedure parameters, columns, API routes, models, interfaces, exports, config, text keys, deleted files, and where the other Znode repos use them). A ticket with no code yet is judged from similar finished tickets.</div>
       </form>
       <div id="impEst" class="stack" hidden>
-        <div class="qlabel">1 · How risky is it? <span>no code yet: from similar finished tickets</span></div>
+        <div class="qlabel">1 · Is it safe to merge? <span>no code yet</span></div>
         <div class="verdict" id="estVerdict"></div>
         <div class="qlabel">2 · Which areas are likely affected?</div>
         <div class="panel"><div class="areas" id="estAreas"></div></div>
         <div class="qlabel">3 · What could break? <span>things similar tickets changed that other code depends on</span></div>
         <div class="panel"><div id="estWatch"></div></div>
-        <div class="panel"><div class="panel-h"><h2>Similar finished tickets</h2><span class="muted" id="estSimCount"></span></div><div id="estSimilar"></div></div>
+        <div class="panel"><div class="panel-h"><h2>Close past tickets</h2><span class="muted" id="estSimCount"></span></div><div id="estSimilar"></div></div>
       </div>
       <div id="impOut" class="stack" hidden>
         <div class="qlabel">1 · Is it safe to merge?</div>
@@ -2111,23 +2111,21 @@ function renderEstimate(e) {
   $('impOut').hidden = true; $('impMsg').textContent = '';
   if (e.error && !(e.similar || []).length) { $('impMsg').textContent = e.error; return; }
   const n = e.basedOn, s = x => x === 1 ? '' : 's', v = $('estVerdict'); v.textContent = '';
-  const RISKV = { high: ['bad', 'High risk'], medium: ['wait', 'Medium risk'], low: ['ok', 'Low risk'] };
-  if (n) {
-    const [cls, label] = RISKV[e.risk];
-    v.className = 'verdict ' + cls;
-    v.append(el('b', null, `${label} for ${e.key}`), el('span', null, `Judged from ${n} similar finished ticket${s(n)} that had code. A guide before any code exists, not a check of real changes.`));
-    const list = el('ul', 'checks');
-    e.riskWhy.forEach((t, i) => { const li = el('li'); li.append(icon(i === 1 && e.watch.length ? 'alert' : 'check'), el('span', null, t)); list.append(li); });
-    v.append(list);
-  } else {
-    v.className = 'verdict wait';
-    v.append(el('b', null, `Not enough history for ${e.key}`), el('span', null, (e.similar || []).length ? 'Similar tickets were found, but none had a merged PR in these repos to learn from.' : 'No similar finished tickets were found.'));
+  v.className = 'verdict wait';
+  v.append(el('b', null, `No code yet for ${e.key}: nothing to check`), el('span', null, n >= 2
+    ? `${n} close past tickets (3 or more of the same words) show where this kind of change usually lands. Run the check again once a PR exists.`
+    : `Not enough close past tickets to say more${n === 1 ? ' (only one had code)' : ''}. Run the check again once a PR exists.`));
+  if ((e.usualLayers || []).length) {
+    const list = el('ul', 'checks'), li = el('li');
+    li.append(icon('arrow'), el('span', null, 'Usually changed: ' + e.usualLayers.map(l => `${l.layer} (${l.tickets} of ${n})`).join(', ')));
+    list.append(li); v.append(list);
   }
-  v.append(el('span', 'scope', `${n ? `Typical size: about ${e.size.files} file${s(e.size.files)}, ~${e.size.lines} lines, ${e.size.prs} PR${s(e.size.prs)}. ` : ''}Matched on: ${e.keywords.join(', ')}.`));
-  renderAreas($('estAreas'), e.featureAreas, a => `in ${a.tickets} of ${n} similar`);
+  v.append(el('span', 'scope', `${n >= 2 ? `Typical size: about ${e.size.files} file${s(e.size.files)}, ~${e.size.lines} lines. ` : ''}Words compared: ${e.keywords.join(', ')}.`));
+  renderAreas($('estAreas'), e.featureAreas, a => `in ${a.tickets} of ${n} close tickets`);
+  if (!(e.featureAreas || []).length) emptyBox($('estAreas'), 'Not enough history', n >= 2 ? 'The close tickets changed different areas; none came up twice.' : 'Too few close past tickets with code.');
   const w = $('estWatch'); w.textContent = '';
   (e.watch || []).forEach(x => listItem(w, pill(...RISK[x.risk]), `${x.name} · ${x.kind}`, `${x.why} (${shortRepo(x.repo)}, changed in ${x.ticket})`, x.ticket, jiraUrl(x.ticket)));
-  if (!(e.watch || []).length) emptyBox(w, n ? 'Nothing risky came up' : 'Nothing to show', n ? 'Similar tickets did not change procedures, API models, routes, interfaces or other shared things.' : '');
+  if (!(e.watch || []).length) emptyBox(w, 'Nothing to show', n >= 2 ? 'The close tickets did not change procedures, API models, routes, interfaces or other shared things.' : 'Too few close past tickets with code.');
   const sim = $('estSimilar'); sim.textContent = ''; $('estSimCount').textContent = `${(e.similar || []).length} found`;
   (e.similar || []).forEach(t => {
     const right = el('span', 'r', t.prs.length ? `${t.files} file${s(t.files)} · ${t.lines} lines` : 'no PR');

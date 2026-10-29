@@ -984,10 +984,10 @@ function findingsFor(f, repo) {
 const usageCache = new Map();   // search -> { at, items }
 // Impact before any code exists: the merged PRs of similar finished tickets (same distinctive words in the summary) show which
 // repos and areas such a change usually touches, its typical size, and which risky kinds of change came with it. An estimate.
-const STOP = new Set('the a an and or of to in on for with from by at as is are be not no when while after before into its it this that than then also only all any via per using use used new add added adding update updated updating remove removed issue issues bug fix fixed fixes error errors problem working work works should does do did page pages field fields value values data display displayed displaying show shown showing showed webstore admin api store stores user users list option options able unable getting get set during case cases correct incorrect proper properly wrong same other some multiple single item items z10 znode 10x 9x hotfix int qat dev overall system continue appear appears appearing happen happens existing exist exists current currently based related until'.split(' '));
+const STOP = new Set('the a an and or of to in on for with from by at as is are be not no when while after before into its it this that than then also only all any via per using use used new add added adding update updated updating remove removed issue issues bug fix fixed fixes error errors problem working work works should does do did page pages field fields value values data display displayed displaying show shown showing showed webstore admin api store stores user users list option options able unable getting get set during case cases correct incorrect proper properly wrong same other some multiple single item items z10 znode 10x 9x hotfix int qat dev overall system continue appear appears appearing happen happens existing exist exists current currently based related until functionality functionalities functional selection select selected option records record returns return working proper able allow allows allowed feature features enhancement improvement change changes changed need needs required require level levels type types report reports'.split(' '));
 const words = text => [...new Set((text || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
   .map(w => w.length > 4 && w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)
-  .filter(w => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w)))];
+  .filter(w => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w) && !/^[a-z]+\d+[a-z]*$/.test(w)))];   // no numbers, no ticket prefixes (z10lmc)
 function areaOf(repo, file) {
   const dirs = file.split('/').slice(0, -1).filter(d => !/^(src|app|apps|lib|libs|packages|components|source|code)$/i.test(d)).map(d => d.replace(/^Znode\.(Engine\.)?/, ''));
   return `${repo.replace(/^znode(10)?-/, '').replace(/-migration$|10x-page-builder$/, '')} · ${dirs.slice(0, 2).join('/') || '(root)'}`;
@@ -1037,15 +1037,17 @@ async function impactEstimate(key) {
   if (!JIRA_MODE || jiraError) return { error: 'Connect Jira to estimate from similar tickets.' };
   const ticket = await jiraTicket(key);
   if (!ticket) return { error: `${key} is not in Jira (or you can't see it).` };
-  const kw = words(ticket.summary).sort((a, b) => b.length - a.length).slice(0, 6);
+  const prefixes = new Set((cfg.ticketPrefixes || []).map(x => x.toLowerCase()));
+  const kw = words(ticket.summary).filter(w => !prefixes.has(w)).slice(0, 8);
   if (!kw.length) return { key, summary: ticket.summary, keywords: [], similar: [], error: 'The summary has no distinctive words to compare with.' };
   const project = key.split('-')[0];
   // Two of the words together (every pair of the top five), so one common word like "email" can't fill the list; no Activity
   // tickets (timesheet buckets)
-  const top = kw.slice(0, 5), pairs = top.length < 2 ? top.map(w => `summary ~ "${w}"`) : top.flatMap((a, i) => top.slice(i + 1).map(b => `(summary ~ "${a}" AND summary ~ "${b}")`));
-  const found = await jiraSearch(`project = ${project} AND statusCategory = Done AND key != ${key} AND issuetype != Activity AND (${pairs.join(' OR ')}) ORDER BY updated DESC`, 60).catch(() => []);
-  // Most shared words first; at least two in common when the summary has two or more
-  const need = Math.min(2, kw.length);
+  // Ask Jira for the close matches directly: three of the words together (every combination), or all of them if fewer
+  const sets = kw.length <= 3 ? [kw] : kw.flatMap((x, i) => kw.slice(i + 1).flatMap((y, j) => kw.slice(i + j + 2).map(z => [x, y, z])));
+  const found = await jiraSearch(`project = ${project} AND statusCategory = Done AND key != ${key} AND issuetype != Activity AND (${sets.map(g => `(${g.map(w => `summary ~ "${w}"`).join(' AND ')})`).join(' OR ')}) ORDER BY updated DESC`, 60).catch(() => []);
+  // Close matches only: three distinctive words in common (all of them when the summary has fewer)
+  const need = Math.min(3, kw.length);
   const similar = found.map(t => ({ ...t, shared: kw.filter(w => words(t.summary).includes(w)) })).filter(t => t.shared.length >= need)
     .sort((a, b) => b.shared.length - a.shared.length).slice(0, 8);
   const RANK = { high: 0, medium: 1, low: 2 };
@@ -1072,17 +1074,15 @@ async function impactEstimate(key) {
     const x = feat.get(a.feature) || { feature: a.feature, tickets: 0, layers: new Set(), parts: new Set(), examples: a.examples };
     x.tickets++; a.layers.forEach(l => x.layers.add(l)); a.parts.forEach(p => x.parts.add(p)); feat.set(a.feature, x);
   }));
-  const areasList = [...feat.values()].sort((a, b) => b.tickets - a.tickets).slice(0, 10).map(a => ({ ...a, layers: [...a.layers], parts: [...a.parts] }));
+  const areasList = n < 2 ? [] : [...feat.values()].filter(a => a.tickets >= 2).sort((a, b) => b.tickets - a.tickets).slice(0, 8)
+    .map(a => ({ ...a, layers: [...a.layers], parts: [...a.parts] }));   // only what two or more close tickets agree on
   // What could break: the risky items those tickets changed (highest risk first, one per name)
   const seenWatch = new Set(), watch = withCode.flatMap(t => t.watch).sort((a, b) => RANK[a.risk] - RANK[b.risk])
     .filter(w => !seenWatch.has(w.kind + w.name) && seenWatch.add(w.kind + w.name)).slice(0, 10);
-  // Risk before any code: high when risky changes were common or the work spans three or more layers
-  const layers = new Set(areasList.flatMap(a => a.layers)), highShare = n ? withCode.filter(t => t.watch.some(w => w.risk === 'high')).length / n : 0;
-  const risk = !n ? null : highShare >= 1 / 3 || layers.size >= 3 ? 'high' : watch.length || layers.size >= 2 ? 'medium' : 'low';
-  const riskWhy = !n ? [] : [
-    `${layers.size} layer${layers.size === 1 ? '' : 's'} usually involved: ${[...layers].join(', ')}`,
-    watch.length ? `${withCode.filter(t => t.watch.length).length} of ${n} similar ticket${n === 1 ? '' : 's'} changed things other code depends on` : 'Similar tickets did not change procedures, API models, routes or other shared things'];
-  const data = { key, summary: ticket.summary, keywords: kw, basedOn: n, risk, riskWhy, featureAreas: areasList, watch,
+  // Layers that most close tickets touched (no risk level: it can't be judged honestly before code exists)
+  const layerCount = {}; withCode.forEach(t => new Set([...t.repos].map(LAYER)).forEach(l => { layerCount[l] = (layerCount[l] || 0) + 1; }));
+  const usualLayers = n < 2 ? [] : Object.entries(layerCount).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).map(([l, c]) => ({ layer: l, tickets: c }));
+  const data = { key, summary: ticket.summary, keywords: kw, basedOn: n, usualLayers, featureAreas: areasList, watch,
     size: n ? { files: median(withCode.map(t => t.files)), lines: median(withCode.map(t => t.lines)), prs: median(withCode.map(t => t.prs.length)),
       minLines: Math.min(...withCode.map(t => t.lines)), maxLines: Math.max(...withCode.map(t => t.lines)) } : null,
     repos: share(t => [...t.repos]), areas: share(t => [...t.areas]).slice(0, 10), risks: share(t => [...t.kinds]),
