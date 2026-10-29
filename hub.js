@@ -992,6 +992,44 @@ function areaOf(repo, file) {
   const dirs = file.split('/').slice(0, -1).filter(d => !/^(src|app|apps|lib|libs|packages|components|source|code)$/i.test(d)).map(d => d.replace(/^Znode\.(Engine\.)?/, ''));
   return `${repo.replace(/^znode(10)?-/, '').replace(/-migration$|10x-page-builder$/, '')} · ${dirs.slice(0, 2).join('/') || '(root)'}`;
 }
+// Affected areas: a change as features (Category, Cart, Email template ...) and the layers and parts they live in, read from file
+// names: CategoryController.cs -> Category, API endpoint; Znode_GetPublishCategory.sql -> Publish Category, database procedure.
+const LAYER = repo => /multifront-db/.test(repo) ? 'Database' : /admin/.test(repo) ? 'Admin' : /commerceportal/.test(repo) ? 'Commerce Portal API'
+  : /graphql/.test(repo) ? 'GraphQL' : /webstore|page-builder/.test(repo) ? 'Webstore' : /bstore/.test(repo) ? 'B Store' : /api/.test(repo) ? 'API' : repo;   // "webstore" contains "bstore": check it first
+const VERB = /^(get|set|insert|update|delete|del|save|create|add|remove|list|by|for|and|with|all|detail|details|new|edit|manage|view|is|has|to|of|the|on|data|info)$/i;
+function partOf(file) {
+  const f = file.replace(/\\/g, '/');
+  return /\/Procedures?\//i.test(f) || /\.sql$/i.test(f) && /proc/i.test(f) ? 'procedure' : /\/Tables?\//i.test(f) ? 'table' : /\/Views?\//i.test(f) && /\.sql$/i.test(f) ? 'view'
+    : /\/Functions?\//i.test(f) ? 'function' : /\.sql$/i.test(f) ? 'script' : /Controller\.cs$/.test(f) ? 'endpoint' : /Service\.cs$|Engine\.cs$/.test(f) ? 'business logic'
+    : /Repository\.cs$|Cache\.cs$/.test(f) ? 'data access' : /Helper\.cs$|Extensions?\.cs$/.test(f) ? 'helper' : /Model\.cs$|ViewModel\.cs$|Models?\//.test(f) ? 'model' : /Agent\.cs$/.test(f) ? 'agent'
+    : /\.cshtml$/.test(f) ? 'screen' : /\.(tsx|jsx)$/.test(f) ? 'component' : /\.s?css$/.test(f) ? 'styles' : /\.resx$|\.json$/.test(f) ? 'text or config'
+    : /test/i.test(f) ? 'tests' : /\.(ts|js)$/.test(f) ? 'frontend logic' : 'code';
+}
+function featureOf(file) {
+  const parts = file.replace(/\\/g, '/').split('/'), last = parts.pop();
+  let name = last.replace(/\.(test|spec|module|stories|styles?)?\.?\w+$/i, '');
+  if (/^(index|page|layout|route|types?|styles?|constants?|utils?|helpers?|config|main|default)$/i.test(name))
+    name = parts.filter(x => !/^(src|app|apps|lib|libs|packages|components?|pages?|api|views?|shared|common|\(.*\)|\[.*\])$/i.test(x)).pop() || name;
+  name = name.replace(/^dbo\./i, '').replace(/^Znode_?/i, '').replace(/^I(?=[A-Z][a-z])/, '')
+    .replace(/(Controller|Service|Services|Repository|Cache|Agent|ViewModel|ListModel|Model|Models|Helper|Client|Engine|Base|Mapper|Map|Validator|Constants?|Extensions?|Tests?)$/, '');
+  const split = n => n.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_\-.]+/).filter(w => w && !VERB.test(w) && !/^\d+$/.test(w));
+  let words = split(name);
+  if (!words.length) words = split(parts.filter(x => !/^(src|app|views?|pages?|components?)$/i.test(x)).pop() || '');   // Edit.cshtml -> its folder (Category)
+  return words.slice(0, 3).map(w => w[0].toUpperCase() + w.slice(1)).join(' ') || last;
+}
+// files: [{ repo, filename }] -> features with their layers and parts, most files first
+function affectedAreas(files) {
+  const by = new Map();
+  for (const f of files) {
+    if (/(^|\/)(tests?|__tests__)\/|\.(test|spec)\.\w+$|Tests?\.cs$|\.(md|txt|png|jpg|svg|lock)$|package(-lock)?\.json$|\.csproj$/i.test(f.filename)) continue;
+    const feature = featureOf(f.filename), a = by.get(feature) || { feature, files: 0, layers: new Set(), parts: new Set(), examples: [] };
+    a.files++; a.layers.add(LAYER(f.repo)); a.parts.add(`${LAYER(f.repo)} ${partOf(f.filename)}`);
+    if (a.examples.length < 3) a.examples.push(`${shortRepo(f.repo)}/${f.filename}`);
+    by.set(feature, a);
+  }
+  return [...by.values()].sort((a, b) => b.files - a.files).map(a => ({ ...a, layers: [...a.layers], parts: [...a.parts] }));
+}
+
 const estimateCache = new Map();
 async function impactEstimate(key) {
   const hit = estimateCache.get(key); if (hit && Date.now() - hit.at < 3600000) return hit.data;
@@ -1016,19 +1054,35 @@ async function impactEstimate(key) {
       .filter(p => cfg.repos.includes(p.repository_url.split('/').pop()));   // the search already matched the key (title, branch or description)
     // One PR per repo (the same change is often raised again for each branch)
     const perRepo = new Map(); prItems.forEach(p => { const r = p.repository_url.split('/').pop(); if (!perRepo.has(r)) perRepo.set(r, p); });
-    Object.assign(t, { prs: [], files: 0, lines: 0, areas: new Set(), kinds: new Set(), repos: new Set() });
+    Object.assign(t, { prs: [], files: 0, lines: 0, areas: new Set(), kinds: new Set(), repos: new Set(), fileList: [], watch: [] });
     for (const [repo, p] of perRepo) {
       t.prs.push({ repo, number: p.number, url: p.html_url }); t.repos.add(repo);
       for (const f of await ghAll(`/repos/${cfg.owner}/${repo}/pulls/${p.number}/files`, 3).catch(() => [])) {
-        t.files++; t.lines += (f.additions || 0) + (f.deletions || 0); t.areas.add(areaOf(repo, f.filename));
-        for (const x of findingsFor(f, repo)) if (RANK[x.risk] <= 1) t.kinds.add(x.kind);
+        t.files++; t.lines += (f.additions || 0) + (f.deletions || 0); t.areas.add(areaOf(repo, f.filename)); t.fileList.push({ repo, filename: f.filename });
+        for (const x of findingsFor(f, repo)) if (RANK[x.risk] <= 1) { t.kinds.add(x.kind); t.watch.push({ kind: x.kind, name: x.name, risk: x.risk, why: x.why, repo, ticket: t.key }); }
       }
     }
   }
   const withCode = similar.filter(t => t.prs.length), n = withCode.length;
   const median = list => { const v = [...list].sort((a, b) => a - b); return v.length ? v[Math.floor((v.length - 1) / 2)] : 0; };
   const share = pick => { const c = {}; withCode.forEach(t => pick(t).forEach(x => { c[x] = (c[x] || 0) + 1; })); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count, pct: Math.round(count / n * 100) })); };
-  const data = { key, summary: ticket.summary, keywords: kw, basedOn: n,
+  // Features: in how many similar tickets each one came up (one count per ticket)
+  const feat = new Map();
+  withCode.forEach(t => affectedAreas(t.fileList).forEach(a => {
+    const x = feat.get(a.feature) || { feature: a.feature, tickets: 0, layers: new Set(), parts: new Set(), examples: a.examples };
+    x.tickets++; a.layers.forEach(l => x.layers.add(l)); a.parts.forEach(p => x.parts.add(p)); feat.set(a.feature, x);
+  }));
+  const areasList = [...feat.values()].sort((a, b) => b.tickets - a.tickets).slice(0, 10).map(a => ({ ...a, layers: [...a.layers], parts: [...a.parts] }));
+  // What could break: the risky items those tickets changed (highest risk first, one per name)
+  const seenWatch = new Set(), watch = withCode.flatMap(t => t.watch).sort((a, b) => RANK[a.risk] - RANK[b.risk])
+    .filter(w => !seenWatch.has(w.kind + w.name) && seenWatch.add(w.kind + w.name)).slice(0, 10);
+  // Risk before any code: high when risky changes were common or the work spans three or more layers
+  const layers = new Set(areasList.flatMap(a => a.layers)), highShare = n ? withCode.filter(t => t.watch.some(w => w.risk === 'high')).length / n : 0;
+  const risk = !n ? null : highShare >= 1 / 3 || layers.size >= 3 ? 'high' : watch.length || layers.size >= 2 ? 'medium' : 'low';
+  const riskWhy = !n ? [] : [
+    `${layers.size} layer${layers.size === 1 ? '' : 's'} usually involved: ${[...layers].join(', ')}`,
+    watch.length ? `${withCode.filter(t => t.watch.length).length} of ${n} similar ticket${n === 1 ? '' : 's'} changed things other code depends on` : 'Similar tickets did not change procedures, API models, routes or other shared things'];
+  const data = { key, summary: ticket.summary, keywords: kw, basedOn: n, risk, riskWhy, featureAreas: areasList, watch,
     size: n ? { files: median(withCode.map(t => t.files)), lines: median(withCode.map(t => t.lines)), prs: median(withCode.map(t => t.prs.length)),
       minLines: Math.min(...withCode.map(t => t.lines)), maxLines: Math.max(...withCode.map(t => t.lines)) } : null,
     repos: share(t => [...t.repos]), areas: share(t => [...t.areas]).slice(0, 10), risks: share(t => [...t.kinds]),
@@ -1052,11 +1106,12 @@ async function impact(input, from = 0, forceEstimate = false) {
       .filter(t => cfg.repos.includes(t.repo));
     if (!targets.length || forceEstimate) return { prs: [], estimate: await impactEstimate(key) };   // no code yet: estimate from similar tickets
   }
-  const found = new Map(), stats = { files: 0, additions: 0, deletions: 0, tests: 0, repos: new Set() };
+  const found = new Map(), stats = { files: 0, additions: 0, deletions: 0, tests: 0, repos: new Set() }, allFiles = [];
   const RANK = { high: 0, medium: 1, low: 2 };
   for (const t of targets) {
     for (const f of await ghAll(`/repos/${cfg.owner}/${t.repo}/pulls/${t.number}/files`, 3)) {
       Object.assign(stats, { files: stats.files + 1, additions: stats.additions + (f.additions || 0), deletions: stats.deletions + (f.deletions || 0) });
+      allFiles.push({ repo: t.repo, filename: f.filename });
       stats.repos.add(t.repo);
       if (/(^|\/)(tests?|specs?|__tests__)\/|\.(test|spec)\.\w+$|Tests?\.cs$/i.test(f.filename)) stats.tests++;
       for (const x of findingsFor(f, t.repo)) {   // one entry per kind + name, keeping the riskiest
@@ -1066,6 +1121,12 @@ async function impact(input, from = 0, forceEstimate = false) {
     }
   }
   const findings = [...found.values()].sort((a, b) => RANK[a.risk] - RANK[b.risk]);
+  // Ready to merge? Approved (the hub's review status), no conflicts and checks passing (GitHub's mergeable state)
+  const readiness = await Promise.all(targets.map(async t => {
+    const pr = await gh(`/repos/${cfg.owner}/${t.repo}/pulls/${t.number}`).catch(() => null), known = prs.find(p => p.repo === t.repo && p.number === t.number);
+    return { pr: `${t.repo}#${t.number}`, review: known ? known.review : null, conflicts: pr ? pr.mergeable === false || pr.mergeable_state === 'dirty' : null,
+      checks: pr ? (pr.mergeable_state === 'unstable' ? 'failing' : pr.mergeable_state === 'blocked' ? 'blocked' : 'ok') : null, draft: pr ? pr.draft : false };
+  }));
   // Code search allows about 10 requests a minute, so check 8 at a time ("Check next 8"), only in the Znode repos we care about.
   let limited = false;   // true when GitHub's search limit stopped some checks
   const scope = (cfg.impactRepos || cfg.repos).map(r => `repo:${cfg.owner}/${r}`).join(' ');
@@ -1084,7 +1145,7 @@ async function impact(input, from = 0, forceEstimate = false) {
       n.usages = null; limited = true;   // rate limited: shown as "not checked"
     }
   }
-  return { prs: targets.map(t => `${t.repo}#${t.number}`), findings, from, checkedTo: Math.min(findings.length, from + 8),
+  return { prs: targets.map(t => `${t.repo}#${t.number}`), findings, readiness, areas: affectedAreas(allFiles).slice(0, 12), from, checkedTo: Math.min(findings.length, from + 8),
     total: findings.length, limited, stats: { ...stats, repos: [...stats.repos] } };
 }
 
@@ -1379,7 +1440,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Used by test/popups.test.js; starting the hub (node hub.js) is below.
-module.exports = { stageOf, words, areaOf, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
+module.exports = { stageOf, words, areaOf, featureOf, partOf, affectedAreas, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
   setSession: s => { token = s.token; email = s.email; },
   state: () => ({ runs: [...runs.values()], deploys: [...deploys.values()], prs, requests, lastError, events }) };
 
