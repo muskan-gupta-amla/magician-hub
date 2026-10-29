@@ -402,15 +402,6 @@
   .tl b { color:var(--fg); font-weight:600; }
   .tl a { color:inherit; }
   @media (max-width:640px) { .tl li { grid-template-columns:1fr; gap:0; } }
-  /* Impact check: three questions, each with its answer */
-  .qlabel { font:800 13px var(--font); letter-spacing:.02em; color:var(--fg-2); margin:6px 2px -6px; }
-  .qlabel span { font-weight:500; color:var(--muted); margin-left:6px; }
-  .area { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line-2); }
-  .area:last-child { border-bottom:0; }
-  .area b { font-size:14px; }
-  .area .chips { grid-column:1; display:flex; flex-wrap:wrap; gap:4px; }
-  .area .r { grid-row:1 / span 2; grid-column:2; font-size:12px; color:var(--muted); text-align:right; white-space:nowrap; }
-  .area .ex { grid-column:1; font:11.5px var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .fixenvs { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; padding:14px 16px; }
   .fixenv { border:1px solid var(--line); border-radius:12px; padding:10px 12px; display:grid; gap:4px; min-width:0; font-size:12.5px; color:var(--fg-2); }
   .fixenv.yes { border-color:color-mix(in srgb, var(--ok) 40%, transparent); background:color-mix(in srgb, var(--ok) 6%, var(--panel)); }
@@ -584,7 +575,7 @@
       <div id="fixOut" class="stack" hidden>
         <div class="panel">
           <div class="panel-h"><h2 id="fixKeyLabel"></h2>
-            <div class="row"><a class="btn" id="fixJira" target="_blank" rel="noopener">Open in Jira</a><button class="btn" type="button" id="fixImpact">Impact check</button></div></div>
+            <div class="row"><a class="btn" id="fixJira" target="_blank" rel="noopener">Open in Jira</a><button class="btn" type="button" id="fixImpact">Is it safe to merge?</button></div></div>
           <div class="pad-row row" id="fixInfo"></div>
         </div>
         <div class="panel" id="lcPanel">
@@ -773,31 +764,17 @@
     <!-- Impact check -->
     <section data-view="impact" class="stack" hidden>
       <form class="hero-search" id="impForm">
-        <h2>Impact check</h2>
+        <h2>Is it safe to merge?</h2>
         <div class="searchbox">
           <input id="impPr" placeholder="PR link or ticket, e.g. Z10-41590" aria-label="PR link or ticket" autocomplete="off">
           <button class="btn primary" type="submit">Check</button>
-          <button class="btn" type="button" id="impEstimate" title="For a ticket: likely repos, areas and size, from similar finished tickets">Estimate from similar tickets</button>
         </div>
-        <div class="hint" id="impMsg">Answers three questions for a PR or a ticket: is it safe to merge, which areas are affected, and what could break (procedure parameters, columns, API routes, models, interfaces, exports, config, text keys, deleted files, and where the other Znode repos use them). A ticket with no code yet is judged from similar finished tickets.</div>
+        <div class="hint" id="impMsg">Reads the PR's changes for things that break other code: new or removed procedure parameters, dropped or renamed columns, changed API routes, removed model properties, interface methods, frontend exports, config settings, text keys and deleted files. Then finds where the other Znode repos use them. Also shows whether it is approved, has merge conflicts or failing checks.</div>
       </form>
-      <div id="impEst" class="stack" hidden>
-        <div class="qlabel">1 · Is it safe to merge? <span>no code yet</span></div>
-        <div class="verdict" id="estVerdict"></div>
-        <div class="qlabel">2 · Which areas are likely affected?</div>
-        <div class="panel"><div class="areas" id="estAreas"></div></div>
-        <div class="qlabel">3 · What could break? <span>things similar tickets changed that other code depends on</span></div>
-        <div class="panel"><div id="estWatch"></div></div>
-        <div class="panel"><div class="panel-h"><h2>Close past tickets</h2><span class="muted" id="estSimCount"></span></div><div id="estSimilar"></div></div>
-      </div>
       <div id="impOut" class="stack" hidden>
-        <div class="qlabel">1 · Is it safe to merge?</div>
         <div class="verdict" id="impVerdict"></div>
-        <div class="qlabel">2 · Which areas are affected? <span id="impAreasNote"></span></div>
-        <div class="panel"><div class="areas" id="impAreas"></div></div>
-        <div class="qlabel">3 · What could break?</div>
         <div class="panel">
-          <div class="panel-h"><h2>Changes other code depends on</h2><span class="muted" id="impCount"></span></div>
+          <div class="panel-h"><h2>What this PR changes</h2><span class="muted" id="impCount"></span></div>
           <div class="tbl"><table>
             <thead><tr><th>Changed item</th><th>Type</th><th>Risk and why</th><th>Used in another repo?</th></tr></thead>
             <tbody id="impRows"></tbody>
@@ -890,7 +867,7 @@ const VIEWS = {
   standup: ['Daily Scrum', 'Yesterday, today and blockers, from GitHub and Jira'],
   time: ['Time Log', 'Log time in Jira, and see what is left today'],
   release: ['Release notes', 'Tickets between two tags or branches'],
-  impact: ['Impact check', 'Is it safe to merge, which areas it affects, what could break'],
+  impact: ['Impact check', 'Will a PR break another repo?'],
   branches: ['Branches', 'Stale branches to clean up']
 };
 let view = 'overview';
@@ -2020,11 +1997,8 @@ const CATEGORIES = [['Database procedure', 'database procedures'], ['Database co
 async function checkImpact(from) {
   const d = await tool('/api/impact', { pr: imp.input, from }, $('impMsg'));
   if (!d) return;
-  if (!d.prs.length) {
-    if (d.estimate) return renderEstimate(d.estimate);
-    $('impMsg').textContent = 'No open PRs for that ticket.'; return;
-  }
-  if (!imp.findings) Object.assign(imp, { prs: d.prs, total: d.total, stats: d.stats, findings: d.findings, areas: d.areas, readiness: d.readiness || [] });
+  if (!d.prs.length) { $('impMsg').textContent = 'No open PR for that ticket yet. The check reads a PR\'s changes, so run it once a PR is open.'; return; }
+  if (!imp.findings) Object.assign(imp, { prs: d.prs, total: d.total, stats: d.stats, findings: d.findings, readiness: d.readiness || [] });
   else d.findings.slice(d.from, d.checkedTo).forEach(x => {   // later batches: take the usages just checked
     const mine = imp.findings.find(n => n.kind === x.kind && n.name === x.name); if (mine) mine.usages = x.usages;
   });
@@ -2067,11 +2041,8 @@ function renderImpact() {
   v.append(list, scope);
 
   $('impCount').textContent = total ? `${total - unchecked.length} of ${total} checked` : '';
-  renderAreas($('impAreas'), imp.areas, a => `${a.files} file${a.files === 1 ? '' : 's'}`);
-  const nl = new Set((imp.areas || []).flatMap(a => a.layers)).size;
-  $('impAreasNote').textContent = (imp.areas || []).length ? `${imp.areas.length} feature${imp.areas.length === 1 ? '' : 's'} across ${nl} layer${nl === 1 ? '' : 's'}` : '';
   const body = $('impRows');
-  if (!findings.length) emptyRow(body, 'Nothing here can break other code', 'No database, API, model, interface, export, config, text or file changes that other code depends on.', 4); else body.textContent = '';
+  if (!findings.length) emptyRow(body, 'Nothing risky in this PR', 'No database, API, model, interface, export, config, text or file changes that other code depends on.', 4); else body.textContent = '';
   [...used, ...findings.filter(n => !used.includes(n))].forEach(n => {
     const tr = body.insertRow(), uses = el('div', 'uses'), item = el('div'), risk = el('div', 'uses');
     item.append(el('b', 'mono', n.name), el('div', 'muted', shortRepo(n.repo) + ' · ' + n.file.split('/').pop()));
@@ -2090,57 +2061,8 @@ function renderImpact() {
   $('impMore').textContent = `Check next ${Math.min(8, unchecked.length)} (${unchecked.length} left)`;
   $('impOut').hidden = false;
 }
-// Affected areas: one row per feature with the layers and parts it touches
-function renderAreas(box, areas, right) {
-  box.textContent = '';
-  (areas || []).forEach(a => {
-    const row = el('div', 'area'), chips = el('div', 'chips');
-    a.parts.forEach(p => chips.append(el('span', 'chip', p)));
-    const ex = el('div', 'ex', a.examples.join('  ·  ')); ex.title = a.examples.join('\n');
-    row.append(el('b', null, a.feature), el('span', 'r', right(a)), chips, ex);
-    box.append(row);
-  });
-  if (!(areas || []).length) emptyBox(box, 'No code areas found', '');
-}
-
-// Estimate (no code yet): what similar finished tickets changed, as likely repos, areas, size and risks
-const RISK_TIP = { 'Database procedure': 'procedure parameters changed: check every caller', 'C# data model': 'API models changed: check clients and other repos',
-  'API route': 'routes changed: check gateways and callers', 'Database column': 'columns dropped or renamed', 'Interface method': 'interfaces changed',
-  'Exported code': 'shared frontend exports changed', 'Config setting': 'config keys changed', 'Text resource': 'text keys removed', 'Deleted or renamed file': 'files removed or renamed' };
-function renderEstimate(e) {
-  $('impOut').hidden = true; $('impMsg').textContent = '';
-  if (e.error && !(e.similar || []).length) { $('impMsg').textContent = e.error; return; }
-  const n = e.basedOn, s = x => x === 1 ? '' : 's', v = $('estVerdict'); v.textContent = '';
-  v.className = 'verdict wait';
-  v.append(el('b', null, `No code yet for ${e.key}: nothing to check`), el('span', null, n >= 2
-    ? `${n} close past tickets (3 or more of the same words) show where this kind of change usually lands. Run the check again once a PR exists.`
-    : `Not enough close past tickets to say more${n === 1 ? ' (only one had code)' : ''}. Run the check again once a PR exists.`));
-  if ((e.usualLayers || []).length) {
-    const list = el('ul', 'checks'), li = el('li');
-    li.append(icon('arrow'), el('span', null, 'Usually changed: ' + e.usualLayers.map(l => `${l.layer} (${l.tickets} of ${n})`).join(', ')));
-    list.append(li); v.append(list);
-  }
-  v.append(el('span', 'scope', `${n >= 2 ? `Typical size: about ${e.size.files} file${s(e.size.files)}, ~${e.size.lines} lines. ` : ''}Words compared: ${e.keywords.join(', ')}.`));
-  renderAreas($('estAreas'), e.featureAreas, a => `in ${a.tickets} of ${n} close tickets`);
-  if (!(e.featureAreas || []).length) emptyBox($('estAreas'), 'Not enough history', n >= 2 ? 'The close tickets changed different areas; none came up twice.' : 'Too few close past tickets with code.');
-  const w = $('estWatch'); w.textContent = '';
-  (e.watch || []).forEach(x => listItem(w, pill(...RISK[x.risk]), `${x.name} · ${x.kind}`, `${x.why} (${shortRepo(x.repo)}, changed in ${x.ticket})`, x.ticket, jiraUrl(x.ticket)));
-  if (!(e.watch || []).length) emptyBox(w, 'Nothing to show', n >= 2 ? 'The close tickets did not change procedures, API models, routes, interfaces or other shared things.' : 'Too few close past tickets with code.');
-  const sim = $('estSimilar'); sim.textContent = ''; $('estSimCount').textContent = `${(e.similar || []).length} found`;
-  (e.similar || []).forEach(t => {
-    const right = el('span', 'r', t.prs.length ? `${t.files} file${s(t.files)} · ${t.lines} lines` : 'no PR');
-    listItem(sim, el('span', 'chip', t.key), t.summary, `same words: ${t.shared.join(', ')}${t.prs.length ? ' · ' + t.prs.map(p => `${shortRepo(p.repo)} #${p.number}`).join(', ') : ''}`, right, jiraUrl(t.key));
-  });
-  $('impEst').hidden = false;
-}
-$('impEstimate').addEventListener('click', async () => {
-  $('impOut').hidden = true; $('impEst').hidden = true;
-  const d = await tool('/api/impact', { pr: $('impPr').value.trim(), estimate: 1 }, $('impMsg'));
-  if (d && d.estimate) renderEstimate(d.estimate);
-});
-
 $('impForm').addEventListener('submit', e => {
-  e.preventDefault(); $('impOut').hidden = true; $('impEst').hidden = true;
+  e.preventDefault(); $('impOut').hidden = true;
   imp = { input: $('impPr').value.trim() };
   checkImpact(0);
 });

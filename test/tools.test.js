@@ -377,11 +377,6 @@ test('ticket stages: QA Done counts as done, review and QA are told apart', () =
     ['todo', 'todo', 'dev', 'review', 'qa', 'qa', 'done', 'done']);
 });
 
-test('estimate keywords: distinctive words only, plurals folded', () => {
-  assert.deepEqual(hub.words('Webstore: CMS: Hidden Categories Continue to Appear in Category Widget'), ['cms', 'hidden', 'category', 'widget']);
-  assert.equal(hub.areaOf('znode10-api-migration', 'Znode.Engine.Api/Controllers/CategoryController.cs'), 'api · Api/Controllers');
-});
-
 test('branch delete: refused for protected branches, unknown branches and other websites', async () => {
   assert.match((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'int', sha: 'x' })).body.error, /can't be deleted/);
   assert.match((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'v10.14.0.0-hotfixes', sha: 'x' })).body.error, /can't be deleted/);
