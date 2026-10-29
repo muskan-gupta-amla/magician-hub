@@ -48,6 +48,7 @@ let email = null;         // local mode: you (Windows popups are yours only); ho
 let lastError = null;
 let lastPoll = null;
 let prs = [];                   // open PRs by the team
+let openHeads = new Set();      // repo:branch of every open PR (anyone's), so those branches are never stale
 let requests = [];              // open PRs (any author) with a team member asked to review
 const seenRequests = new Map(); // "repo#number" -> reviewer logins already announced
 
@@ -97,11 +98,21 @@ async function gitLogin() {
   return m ? m[1] : null;
 }
 
+// GitHub allows 5,000 requests an hour per login. The hub keeps the essentials (builds, PRs, popups) going and pauses the
+// extras (branch scan, deploy history, estimates) when fewer than githubReserve (500) are left.
+const rate = { remaining: null, reset: 0 };
+const rateLow = () => rate.remaining !== null && rate.remaining < (cfg.githubReserve || 500) && Date.now() < rate.reset * 1000;
+const rateBack = () => new Date(rate.reset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 async function gh(url) {
   const res = await fetch(`https://api.github.com${url}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'magician-hub' }
   });
-  if (!res.ok) throw new Error(`GitHub ${res.status} on ${url}`);
+  const left = res.headers && res.headers.get && res.headers.get('x-ratelimit-remaining');
+  if (left !== null && left !== undefined && !/^\/search\//.test(url)) { rate.remaining = +left; rate.reset = +res.headers.get('x-ratelimit-reset') || rate.reset; }
+  if (!res.ok) {
+    if ((res.status === 403 || res.status === 429) && rate.remaining === 0) throw new Error(`GitHub request limit reached for your login. Back at ${rateBack()}.`);
+    throw new Error(`GitHub ${res.status} on ${url}`);
+  }
   return res.json();
 }
 
@@ -176,47 +187,57 @@ async function pollRepo(repo) {
 const shortRepo = r => r.replace(/^znode(10)?-/, '').replace(/-migration$|10x-page-builder$|^multifront-/, '');   // znode10-api-migration -> api
 // Environment deploys: the "Trigger - Z10 <ENV>" workflows in the DevOps repo (DEV4, DEV10, INT ...), started by anyone.
 // Each run's job names say what it built: "build_services (admin, MRRSoft/znode10-admin-migration, ...)".
-const deploys = new Map();   // run id -> deploy
+const deploys = new Map();   // run id -> deploy (deployDays of history, kept on disk so a restart doesn't re-read it)
 const DEPLOY_RE = /^Trigger - Z10 (\w+)$/i;
+const DEPLOYS_FILE = () => path.join(DATA_DIR, 'deploys.json');
+function loadDeploys() {
+  try { for (const d of JSON.parse(fs.readFileSync(DEPLOYS_FILE(), 'utf8'))) if (d.status === 'completed') deploys.set(d.id, d); } catch (e) { /* first run */ }
+}
+function saveDeploys() {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(DEPLOYS_FILE(), JSON.stringify([...deploys.values()].filter(d => d.status === 'completed'))); } catch (e) { /* not fatal */ }
+}
 async function deployBranch(jobId) {
   const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.deployRepo}/actions/jobs/${jobId}/logs`,
     { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'magician-hub' } });
   if (!res.ok) return '';
   return (/^\S+\s+branch:\s*(\S+)\s*$/m.exec(await res.text()) || [])[1] || '';
 }
+// A run's details from its jobs: the services it built ("build_services (admin, MRRSoft/repo, ...)"), the branch (an input the
+// first job prints, "branch: int") and what failed. Two calls per run, read once.
+async function deployDetails(d) {
+  const jobs = ((await gh(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs/${d.id}/jobs?per_page=50`).catch(() => null)) || {}).jobs || [];
+  const svc = new Map();
+  jobs.forEach(j => { const m = /build_services\w* \(([^,]+), [^/]+\/([^,)]+)/.exec(j.name); if (m && !svc.has(m[1])) svc.set(m[1], { code: m[1].trim(), repo: m[2].trim() }); });
+  d.services = [...svc.values()];
+  const parse = jobs.find(j => /parse_services/.test(j.name));
+  if (!d.branch && parse) d.branch = await deployBranch(parse.id).catch(() => '');
+  const bad = jobs.find(j => j.conclusion === 'failure'), badSvc = bad && /build_services\w* \(([^,]+)/.exec(bad.name);
+  d.failed = bad ? (badSvc ? `${badSvc[1].trim()} build failed` : bad.name.replace(/^[^/]*\/\s*/, '')) : '';
+  d.detailed = d.status === 'completed' && !!parse;   // finished runs never change again
+}
 async function pollDeploys() {
   if (!cfg.deployRepo) return;
-  const since = new Date(Date.now() - (cfg.deployDays || 3) * 86400000).toISOString(), envs = (cfg.deployEnvs || []).map(e => e.toUpperCase());
-  const list = (await ghAll(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs?created=${encodeURIComponent('>=' + since.slice(0, 10))}`, seeded ? 1 : 6, x => x.workflow_runs))
+  if (!deploys.size) loadDeploys();
+  const since = new Date(Date.now() - (cfg.deployDays || 14) * 86400000).toISOString(), envs = (cfg.deployEnvs || []).map(e => e.toUpperCase());
+  const list = (await ghAll(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs?created=${encodeURIComponent('>=' + since.slice(0, 10))}`, seeded ? 1 : 20, x => x.workflow_runs))
     .filter(r => DEPLOY_RE.test(r.name || '') && (!envs.length || envs.includes(DEPLOY_RE.exec(r.name)[1].toUpperCase())));
-  const seen = {};   // the newest few per environment get their services read (one call each, once they finish)
+  let budget = rateLow() ? 0 : cfg.deployDetailsPerPoll || 6, changed = false;   // older runs are filled in a few per minute, newest first
   for (const r of list.sort((a, b) => b.created_at.localeCompare(a.created_at))) {
     const env = DEPLOY_RE.exec(r.name)[1].toUpperCase(), prev = deploys.get(r.id);
-    seen[env] = (seen[env] || 0) + 1;
-    if (prev && prev.status === 'completed') continue;
+    if (prev && prev.detailed) continue;
     const login = (r.triggering_actor || r.actor || {}).login || '';
     const d = { id: r.id, env, who: teamByLogin(login) || login, status: r.status, conclusion: r.conclusion, url: r.html_url, at: r.created_at, updated: r.updated_at,
-      services: prev ? prev.services : [], branch: prev ? prev.branch : '', failed: '' };
-    if (seen[env] <= 5) {
-      const jobs = ((await gh(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs/${r.id}/jobs?per_page=50`).catch(() => null)) || {}).jobs || [];
-      const svc = new Map();
-      jobs.forEach(j => { const m = /build_services\w* \(([^,]+), [^/]+\/([^,)]+)/.exec(j.name); if (m && !svc.has(m[1])) svc.set(m[1], { code: m[1].trim(), repo: m[2].trim() }); });
-      d.services = [...svc.values()];
-      // The branch is an input of the run; its first job prints it ("branch: int"). Read once per deploy.
-      const parse = jobs.find(j => /parse_services/.test(j.name));
-      if (!d.branch && parse) d.branch = await deployBranch(parse.id).catch(() => '');
-      const bad = jobs.find(j => j.conclusion === 'failure');
-      const badSvc = bad && /build_services\w* \(([^,]+)/.exec(bad.name);
-      if (bad) d.failed = badSvc ? `${badSvc[1].trim()} build failed` : bad.name.replace(/^[^/]*\/\s*/, '');
-    }
-    deploys.set(r.id, d);
+      services: prev ? prev.services : [], branch: prev ? prev.branch : '', failed: prev ? prev.failed : '', detailed: false };
+    if (r.status !== 'completed' || budget-- > 0) await deployDetails(d);   // running ones always: their result is news
+    deploys.set(r.id, d); changed = true;
     // Your deploy finished: popup for whoever started it (team members only)
     if (seeded && prev && prev.status !== 'completed' && r.status === 'completed' && team.has(d.who)) {
       notify(d.who, `${env}: deploy ${{ success: 'passed', failure: 'failed' }[r.conclusion] || (r.conclusion || '').replace('_', ' ')}`,
         d.services.map(x => x.code).join(', ') + (d.failed ? ` · ${d.failed}` : ''), r.html_url);
     }
   }
-  for (const [id, d] of deploys) if (d.at < since) deploys.delete(id);
+  for (const [id, d] of deploys) if (d.at < since) { deploys.delete(id); changed = true; }
+  if (changed) saveDeploys();
 }
 
 const search = q => gh(`/search/issues?per_page=50&q=${encodeURIComponent(`${q} org:${cfg.owner}`)}`);
@@ -285,6 +306,7 @@ async function pollPrs() {
     })));
   const open = lists.flat().sort((a, b) => b.created.localeCompare(a.created));   // newest first
   prs = open.filter(p => inTeam(p.author));
+  openHeads = new Set(open.map(p => `${p.repo}:${p.head}`));
   await addReviewStatus(prs);
   // Review requests come from each PR's requested reviewers, so one server works for the whole team.
   requests = open.filter(p => p.reviewers.some(l => team.size && teamByLogin(l)));
@@ -312,8 +334,12 @@ async function branchHas(repo, branch, shas, since, mentions) {
   }
   // Squashed down-merges (e.g. "downmerge-int-to-dev10") copy the change without the original commit,
   // but keep the ticket key in their message.
-  const recent = await gh(`/repos/${cfg.owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&since=${since}&per_page=100`);
-  return recent.some(c => mentions.test(c.commit.message)) ? 'squashed' : false;
+  for (let page = 1; page <= 10; page++) {   // every commit since the fix, up to 1,000 (busy branches pass 100 in days)
+    const list = await gh(`/repos/${cfg.owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&since=${since}&per_page=100&page=${page}`);
+    if (list.some(c => mentions.test(c.commit.message))) return 'squashed';
+    if (list.length < 100) break;
+  }
+  return false;
 }
 
 // Where's my fix: PRs and commits for a ticket, and which tracked branches contain them.
@@ -340,7 +366,161 @@ async function findFix(key) {
     await Promise.all(cfg.trackBranches.map(async b => { branches[b] = await branchHas(repo, b, mine, since, mentions); }));
     return { repo, branches };
   }));
-  return { key, trackBranches: cfg.trackBranches, rows, pulls, jira: await jiraTicket(key) };
+  const merged = {};   // branch -> when the fix first reached it (merged PRs)
+  pulls.filter(p => p.state === 'merged').forEach(p => { if (!merged[p.base] || p.date < merged[p.base]) merged[p.base] = p.date; });
+  const hasFix = b => rows.some(r => r.branches[b] === true || r.branches[b] === 'squashed');
+  const environments = (cfg.deployEnvs || []).map(env => {
+    const repoHas = (repo, b) => rows.some(r => r.repo === repo && (r.branches[b] === true || r.branches[b] === 'squashed'));
+    const builtFix = x => x.services.some(sv => mentions.test(x.branch) ? pulls.some(p => p.repo === sv.repo && p.head === x.branch) : repoHas(sv.repo, x.branch));
+    const hit = [...deploys.values()].filter(x => x.env === env && x.status === 'completed' && x.conclusion === 'success' && x.branch && builtFix(x) &&
+      (mentions.test(x.branch) || (hasFix(x.branch) && (!merged[x.branch] || x.at >= merged[x.branch]))))
+      .sort((a, b) => b.at.localeCompare(a.at))[0];
+    return { env, deployed: hit ? { at: hit.at, who: hit.who, branch: hit.branch, via: mentions.test(hit.branch) ? 'ticket branch' : hit.branch, url: hit.url,
+      services: hit.services.map(x => x.code) } : null };
+  });
+  return { key, trackBranches: cfg.trackBranches, rows, pulls, environments, deployDays: cfg.deployDays || 14, jira: await jiraTicket(key) };
+}
+
+// Stale branches: team branches with no open PR and no commit for staleBranchDays (30). Who created each one (the author of
+// the first PR opened from it, else of its last commit), and whether it is already merged. Read in bulk (GraphQL,
+// 100 branches a call), the per-branch check kept on disk by commit so only changed branches are checked again. Cached 1 hour.
+const PROTECTED = /^(int|qat|uat|master|main|develop|dev\d*|staging|production|prod)$|hotfix|release/i;
+const BRANCH_FILE = () => path.join(DATA_DIR, 'branches.json');
+let branchInfo = null, branchList = null, branchAt = 0, branchLoading = null, branchPending = 0;
+async function ghql(query, variables) {
+  const res = await fetch('https://api.github.com/graphql', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'magician-hub', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables }) });
+  if (!res.ok) throw new Error(`GitHub ${res.status} on graphql`);
+  const d = await res.json(); if (d.errors) throw new Error(d.errors[0].message);
+  return d.data;
+}
+const personOf = (email, login) => (email && team.has(email.toLowerCase()) ? email.toLowerCase() : null) || (login && teamByLogin(login)) || null;
+async function readBranches() {
+  if (!branchInfo) { try { branchInfo = JSON.parse(fs.readFileSync(BRANCH_FILE(), 'utf8')); } catch (e) { branchInfo = {}; } }
+  const days = cfg.staleBranchDays || 30, cutoff = Date.now() - days * 86400000, out = [];
+  for (const repo of cfg.repos) {
+    if (missingRepos.has(repo)) continue;
+    let after = null, names = new Set(), base = null;
+    const refs = [];
+    do {
+      const d = await ghql(`query($o:String!,$n:String!,$a:String){repository(owner:$o,name:$n){defaultBranchRef{name}
+        refs(refPrefix:"refs/heads/",first:100,after:$a){pageInfo{hasNextPage endCursor} nodes{name target{... on Commit{oid committedDate author{email user{login}}}}}}}}`,
+        { o: cfg.owner, n: repo, a: after }).catch(e => { if (/Could not resolve/.test(e.message)) return null; throw e; });
+      if (!d || !d.repository) break;
+      base = base || d.repository.defaultBranchRef && d.repository.defaultBranchRef.name;
+      const r = d.repository.refs; refs.push(...r.nodes); r.nodes.forEach(n => names.add(n.name));
+      after = r.pageInfo.hasNextPage ? r.pageInfo.endCursor : null;
+    } while (after);
+    const into = names.has(cfg.branchBase || 'int') ? (cfg.branchBase || 'int') : base;
+    for (const n of refs) {
+      const c = n.target || {}; if (!c.oid || PROTECTED.test(n.name) || n.name === into) continue;
+      if (new Date(c.committedDate) > cutoff || openHeads.has(`${repo}:${n.name}`)) continue;
+      const tip = personOf(c.author && c.author.email, c.author && c.author.user && c.author.user.login);
+      if (tip) out.push({ repo, name: n.name, sha: c.oid, at: c.committedDate, into, tip });   // the team's branches only
+    }
+  }
+  // Creator and merged state: one compare per branch whose commit we haven't checked before (8 at a time, 300 per run;
+  // the rest on the next refresh), saved after every batch
+  const todo = out.filter(b => { const i = branchInfo[`${b.repo}:${b.name}`]; return !i || i.sha !== b.sha || i.rule !== 2; });   // rule 2: creator from the PR
+  const save = () => { try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(BRANCH_FILE(), JSON.stringify(branchInfo)); } catch (e) { /* not fatal */ } };
+  const batch = rateLow() ? 0 : 150;
+  branchPending = Math.max(0, todo.length - batch);
+  for (let i = 0; i < Math.min(todo.length, batch) && !rateLow(); i += 8) {
+    await Promise.all(todo.slice(i, i + 8).map(async b => {
+      // Creator: the author of the first PR opened from the branch (who made the branch, almost always); no PR: whoever made its
+      // last commit. Merged: that PR was merged, or nothing on the branch is missing from the base.
+      const pulls = await gh(`/repos/${cfg.owner}/${b.repo}/pulls?state=all&per_page=10&head=${encodeURIComponent(cfg.owner + ':' + b.name)}`).catch(() => null);
+      if (!pulls) return;
+      const firstPr = pulls.sort((x, y) => x.created_at.localeCompare(y.created_at))[0], mergedPr = pulls.find(x => x.merged_at);
+      let merged = !!mergedPr, ahead = null;
+      if (!merged) {
+        const cmp = await gh(`/repos/${cfg.owner}/${b.repo}/compare/${encodeURIComponent(b.into)}...${encodeURIComponent(b.name)}?per_page=1`).catch(() => null);
+        if (cmp) { merged = cmp.ahead_by === 0; ahead = cmp.ahead_by; }
+      }
+      branchInfo[`${b.repo}:${b.name}`] = { sha: b.sha, merged, ahead, rule: 2, pr: firstPr ? { number: firstPr.number, url: firstPr.html_url, state: firstPr.merged_at ? 'merged' : firstPr.state } : null,
+        creator: firstPr ? (teamByLogin(firstPr.user.login) || firstPr.user.login) : b.tip };
+    }));
+    save();
+  }
+  return out.filter(b => branchInfo[`${b.repo}:${b.name}`] && branchInfo[`${b.repo}:${b.name}`].rule === 2)
+    .map(b => { const i = branchInfo[`${b.repo}:${b.name}`]; return { ...b, merged: !!i.merged, ahead: i.ahead, pr: i.pr, creator: i.creator || b.tip || '' }; })
+    .filter(b => team.has(b.creator)).sort((a, b) => a.at.localeCompare(b.at));
+}
+async function staleBranches(refresh) {
+  if (refresh || !branchList || Date.now() - branchAt > 3600000) {
+    branchLoading = branchLoading || readBranches().then(l => { branchList = l; branchAt = Date.now(); return l; }).finally(() => { branchLoading = null; });
+    await branchLoading;
+  }
+  if (branchPending && Date.now() - branchAt > 60000) staleBranches(true).catch(() => {});   // more to check: carry on in the background
+  return { at: new Date(branchAt).toISOString(), days: cfg.staleBranchDays || 30, branches: branchList, pending: branchPending, me: HOSTED ? null : email,
+    paused: rateLow() ? `GitHub request limit is low for your login; the rest is checked after ${rateBack()}.` : null };
+}
+// Delete a stale branch: PC only, your own GitHub login, and only a branch you created. Checked again on GitHub first: still
+// at the same commit, not protected, no open PR. One branch per request; GitHub keeps no recycle bin, so the page asks first.
+async function deleteBranch({ repo, branch, sha }) {
+  if (HOSTED) return { error: 'Delete branches from your own PC.' };
+  if (!cfg.repos.includes(repo) || !branch || PROTECTED.test(branch)) return { error: 'That branch can\'t be deleted here.' };
+  const b = (branchList || []).find(x => x.repo === repo && x.name === branch);
+  if (!b) return { error: 'That branch is not in the stale list. Refresh the list first.' };
+  if (!email || b.creator !== email) return { error: 'Only the person who created a branch can delete it.' };
+  const now = await gh(`/repos/${cfg.owner}/${repo}/branches/${encodeURIComponent(branch)}`).catch(() => null);
+  if (!now) return { error: 'The branch is already gone.' };
+  if (now.commit.sha !== sha || now.protected) return { error: 'The branch changed since the list was made. Refresh and check it again.' };
+  const open = await gh(`/repos/${cfg.owner}/${repo}/pulls?state=open&head=${encodeURIComponent(cfg.owner + ':' + branch)}`).catch(() => []);
+  if (open.length) return { error: `It has an open PR (#${open[0].number}).` };
+  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${repo}/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'magician-hub', Accept: 'application/vnd.github+json' } });
+  if (res.status !== 204) return { error: res.status === 403 || res.status === 404 ? 'GitHub did not allow it (no permission, or the branch is protected).' : `GitHub answered ${res.status}.` };
+  console.log(`Deleted branch ${repo}:${branch} (${sha.slice(0, 7)}) as ${email}`);
+  branchList = branchList.filter(x => !(x.repo === repo && x.name === branch));
+  return { ok: true, repo, branch, sha };
+}
+
+// Ticket lifecycle: every Jira status the ticket went through with the time spent in each, who moved it, and the GitHub side
+// (PR opened, reviews, merged into which branch) plus the deploys of its branch, as one timeline. Status history needs the Jira API.
+const stageOf = name => /done|closed|resolved|released|complete/i.test(name) ? 'done' : /review/i.test(name) ? 'review'
+  : /\bqa\b|test|rft|uat|verif/i.test(name) ? 'qa' : /backlog|^open$|to ?do|^new$|analysis|ready for dev/i.test(name) ? 'todo' : 'dev';
+async function jiraHistory(key) {
+  if (JIRA_MODE !== 'api' || jiraNeedsToken) return null;
+  const site = new URL(cfg.jiraUrl).origin, headers = { Authorization: jiraBasic(), Accept: 'application/json' };
+  const res = await fetch(`${site}/rest/api/3/issue/${key}?fields=summary,status,created,resolutiondate,assignee,reporter,issuetype`, { headers });
+  if (!res.ok) return { error: res.status === 404 ? `${key} is not in Jira (or you can't see it).` : `Jira answered ${res.status}.` };
+  const issue = await res.json(), f = issue.fields || {}, histories = [];
+  for (let at = 0; at < 1000; at += 100) {   // the full history, 100 entries a page
+    const r = await fetch(`${site}/rest/api/3/issue/${key}/changelog?startAt=${at}&maxResults=100`, { headers });
+    if (!r.ok) break;
+    const page = await r.json(); histories.push(...(page.values || []));
+    if (page.isLast !== false || !(page.values || []).length) break;
+  }
+  const who = a => a ? (a.emailAddress ? a.emailAddress.toLowerCase() : a.displayName || '') : '';
+  const moves = histories.flatMap(h => (h.items || []).filter(i => i.field === 'status').map(i => ({ at: h.created, from: i.fromString, to: i.toString, by: who(h.author) })))
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const assigns = histories.flatMap(h => (h.items || []).filter(i => i.field === 'assignee').map(i => ({ at: h.created, to: i.toString || 'nobody', by: who(h.author) })));
+  // Stages: from creation, each status until the next move (the current one until now, or until resolved)
+  const end = f.resolutiondate || new Date().toISOString(), stages = [];
+  let status = moves.length ? moves[0].from : (f.status || {}).name, since = f.created;
+  for (const m of moves) { stages.push({ status, from: since, to: m.at }); status = m.to; since = m.at; }
+  stages.push({ status, from: since, to: f.resolutiondate && stageOf(status) === 'done' ? f.resolutiondate : new Date().toISOString(), current: true });
+  stages.forEach(x => { x.hours = Math.max(0, (new Date(x.to) - new Date(x.from)) / 3600000); x.stage = stageOf(x.status); });
+  const per = {}; stages.forEach(x => { per[x.status] = per[x.status] || { status: x.status, stage: x.stage, hours: 0, times: 0 }; per[x.status].hours += x.hours; per[x.status].times++; });
+  return { key, summary: f.summary || '', type: (f.issuetype || {}).name || '', created: f.created, resolved: f.resolutiondate || null, end,
+    status: (f.status || {}).name || '', assignee: who(f.assignee), reporter: who(f.reporter), moves, assigns, stages, perStatus: Object.values(per) };
+}
+async function lifecycle(key) {
+  const [jira, prItems] = await Promise.all([jiraHistory(key).catch(e => ({ error: e.message })), search(`${key} is:pr`)]);
+  const mentions = new RegExp(`\\b${key}\\b`, 'i');
+  const prs = (await Promise.all(prItems.items.map(p => ({ p, repo: p.repository_url.split('/').pop() })).filter(x => cfg.repos.includes(x.repo) && mentions.test(x.p.title))
+    .slice(0, 12).map(async ({ p, repo }) => {
+      const [d, reviews] = await Promise.all([gh(`/repos/${cfg.owner}/${repo}/pulls/${p.number}`), gh(`/repos/${cfg.owner}/${repo}/pulls/${p.number}/reviews?per_page=100`).catch(() => [])]);
+      return { repo, number: p.number, title: p.title, url: p.html_url, author: teamByLogin(p.user.login) || p.user.login, base: d.base.ref, head: d.head.ref,
+        opened: d.created_at, merged: d.merged_at, closed: d.closed_at, state: d.merged_at ? 'merged' : d.state,
+        reviews: reviews.filter(r => r.user && r.user.type !== 'Bot' && !/automation|bot\b/i.test(r.user.login) && r.submitted_at && r.state !== 'PENDING')
+          .map(r => ({ at: r.submitted_at, state: r.state, by: teamByLogin(r.user.login) || r.user.login })) };
+    })));
+  const heads = new Set(prs.map(p => p.head));
+  const deployed = [...deploys.values()].filter(x => x.status === 'completed' && x.branch && (mentions.test(x.branch) || heads.has(x.branch)))
+    .map(x => ({ at: x.at, env: x.env, who: x.who, branch: x.branch, ok: x.conclusion === 'success', url: x.url })).sort((a, b) => a.at.localeCompare(b.at));
+  return { key, jira, prs, deployed, deployDays: cfg.deployDays || 14 };
 }
 
 // Jira, read-only. On your PC through the Atlassian CLI (acli) and your own Jira login; on the team server
@@ -802,7 +982,62 @@ function findingsFor(f, repo) {
   return out;
 }
 const usageCache = new Map();   // search -> { at, items }
-async function impact(input, from = 0) {
+// Impact before any code exists: the merged PRs of similar finished tickets (same distinctive words in the summary) show which
+// repos and areas such a change usually touches, its typical size, and which risky kinds of change came with it. An estimate.
+const STOP = new Set('the a an and or of to in on for with from by at as is are be not no when while after before into its it this that than then also only all any via per using use used new add added adding update updated updating remove removed issue issues bug fix fixed fixes error errors problem working work works should does do did page pages field fields value values data display displayed displaying show shown showing showed webstore admin api store stores user users list option options able unable getting get set during case cases correct incorrect proper properly wrong same other some multiple single item items z10 znode 10x 9x hotfix int qat dev overall system continue appear appears appearing happen happens existing exist exists current currently based related until'.split(' '));
+const words = text => [...new Set((text || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
+  .map(w => w.length > 4 && w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)
+  .filter(w => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w)))];
+function areaOf(repo, file) {
+  const dirs = file.split('/').slice(0, -1).filter(d => !/^(src|app|apps|lib|libs|packages|components|source|code)$/i.test(d)).map(d => d.replace(/^Znode\.(Engine\.)?/, ''));
+  return `${repo.replace(/^znode(10)?-/, '').replace(/-migration$|10x-page-builder$/, '')} · ${dirs.slice(0, 2).join('/') || '(root)'}`;
+}
+const estimateCache = new Map();
+async function impactEstimate(key) {
+  const hit = estimateCache.get(key); if (hit && Date.now() - hit.at < 3600000) return hit.data;
+  if (rateLow()) return { error: `GitHub request limit is low for your login. Try the estimate after ${rateBack()}.` };
+  if (!JIRA_MODE || jiraError) return { error: 'Connect Jira to estimate from similar tickets.' };
+  const ticket = await jiraTicket(key);
+  if (!ticket) return { error: `${key} is not in Jira (or you can't see it).` };
+  const kw = words(ticket.summary).sort((a, b) => b.length - a.length).slice(0, 6);
+  if (!kw.length) return { key, summary: ticket.summary, keywords: [], similar: [], error: 'The summary has no distinctive words to compare with.' };
+  const project = key.split('-')[0];
+  // Two of the words together (every pair of the top five), so one common word like "email" can't fill the list; no Activity
+  // tickets (timesheet buckets)
+  const top = kw.slice(0, 5), pairs = top.length < 2 ? top.map(w => `summary ~ "${w}"`) : top.flatMap((a, i) => top.slice(i + 1).map(b => `(summary ~ "${a}" AND summary ~ "${b}")`));
+  const found = await jiraSearch(`project = ${project} AND statusCategory = Done AND key != ${key} AND issuetype != Activity AND (${pairs.join(' OR ')}) ORDER BY updated DESC`, 60).catch(() => []);
+  // Most shared words first; at least two in common when the summary has two or more
+  const need = Math.min(2, kw.length);
+  const similar = found.map(t => ({ ...t, shared: kw.filter(w => words(t.summary).includes(w)) })).filter(t => t.shared.length >= need)
+    .sort((a, b) => b.shared.length - a.shared.length).slice(0, 8);
+  const RANK = { high: 0, medium: 1, low: 2 };
+  for (const t of similar) {
+    const prItems = (await search(`${t.key} is:pr is:merged`).catch(() => ({ items: [] }))).items
+      .filter(p => cfg.repos.includes(p.repository_url.split('/').pop()));   // the search already matched the key (title, branch or description)
+    // One PR per repo (the same change is often raised again for each branch)
+    const perRepo = new Map(); prItems.forEach(p => { const r = p.repository_url.split('/').pop(); if (!perRepo.has(r)) perRepo.set(r, p); });
+    Object.assign(t, { prs: [], files: 0, lines: 0, areas: new Set(), kinds: new Set(), repos: new Set() });
+    for (const [repo, p] of perRepo) {
+      t.prs.push({ repo, number: p.number, url: p.html_url }); t.repos.add(repo);
+      for (const f of await ghAll(`/repos/${cfg.owner}/${repo}/pulls/${p.number}/files`, 3).catch(() => [])) {
+        t.files++; t.lines += (f.additions || 0) + (f.deletions || 0); t.areas.add(areaOf(repo, f.filename));
+        for (const x of findingsFor(f, repo)) if (RANK[x.risk] <= 1) t.kinds.add(x.kind);
+      }
+    }
+  }
+  const withCode = similar.filter(t => t.prs.length), n = withCode.length;
+  const median = list => { const v = [...list].sort((a, b) => a - b); return v.length ? v[Math.floor((v.length - 1) / 2)] : 0; };
+  const share = pick => { const c = {}; withCode.forEach(t => pick(t).forEach(x => { c[x] = (c[x] || 0) + 1; })); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count, pct: Math.round(count / n * 100) })); };
+  const data = { key, summary: ticket.summary, keywords: kw, basedOn: n,
+    size: n ? { files: median(withCode.map(t => t.files)), lines: median(withCode.map(t => t.lines)), prs: median(withCode.map(t => t.prs.length)),
+      minLines: Math.min(...withCode.map(t => t.lines)), maxLines: Math.max(...withCode.map(t => t.lines)) } : null,
+    repos: share(t => [...t.repos]), areas: share(t => [...t.areas]).slice(0, 10), risks: share(t => [...t.kinds]),
+    similar: similar.map(t => ({ key: t.key, summary: t.summary, status: t.status, shared: t.shared, prs: t.prs, files: t.files, lines: t.lines })) };
+  if (!rateLow()) estimateCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
+async function impact(input, from = 0, forceEstimate = false) {
   // Only open PRs: the question is whether it is safe to merge.
   const m = /github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(input);
   let targets;
@@ -815,6 +1050,7 @@ async function impact(input, from = 0) {
     if (!key) return { error: 'Enter a PR link or a ticket key.' };
     targets = (await search(`${key} is:pr is:open`)).items.map(p => ({ repo: p.repository_url.split('/').pop(), number: p.number }))
       .filter(t => cfg.repos.includes(t.repo));
+    if (!targets.length || forceEstimate) return { prs: [], estimate: await impactEstimate(key) };   // no code yet: estimate from similar tickets
   }
   const found = new Map(), stats = { files: 0, additions: 0, deletions: 0, tests: 0, repos: new Set() };
   const RANK = { high: 0, medium: 1, low: 2 };
@@ -925,7 +1161,52 @@ function staleNudges(now) {
     `You have ${list.length} PR${list.length > 1 ? 's' : ''} with no activity for ${cfg.staleDays || 30}+ days`,
     'Close or update them: ' + list.slice(0, 3).map(p => `${shortRepo(p.repo)} #${p.number}`).join(', ') + (list.length > 3 ? ` and ${list.length - 3} more` : ''),
     list.length === 1 ? list[0].url : '/#prs'));
+  const branchPeople = {};
+  (branchList || []).forEach(b => { if (team.has(b.creator)) (branchPeople[b.creator] = branchPeople[b.creator] || []).push(b); });
+  Object.entries(branchPeople).forEach(([person, list]) => {
+    const merged = list.filter(b => b.merged).length;
+    notify(person, `You have ${list.length} stale branch${list.length > 1 ? 'es' : ''}`, `${merged ? `${merged} already merged, safe to delete. ` : ''}Clean them up on the Branches page.`, '/#branches');
+    byPerson[person] = byPerson[person] || [];
+  });
   return Object.keys(byPerson);
+}
+
+// 12:00: your tickets stuck in code review or QA for stuckDays (3) or more (Jira: no status change since). Only the people this
+// hub serves (you on a PC; everyone on the team server), so a PC asks Jira about one person.
+async function stuckNudges(now) {
+  if (!JIRA_MODE || jiraError) return [];
+  const days = cfg.stuckDays || 3, sent = [];
+  for (const person of HOSTED ? [...team] : email ? [email] : []) {
+    const open = (await jiraFor(person).catch(() => [])).filter(t => ['review', 'qa'].includes(stageOf(t.status)));
+    if (!open.length) continue;
+    const stuck = await jiraSearch(`key in (${open.map(t => t.key).join(',')}) AND NOT status CHANGED AFTER -${days}d`, 50).catch(() => []);
+    if (!stuck.length) continue;
+    nudgePerson(person, stuck.map(t => ({ title: `${t.key} has been in ${t.status} for ${days}+ days`, body: t.summary, url: `${cfg.jiraUrl}${t.key}` })),
+      n => `${n} of your tickets haven't moved for ${days}+ days`, '/#overview');
+    sent.push(person);
+  }
+  return sent;
+}
+// 12:00: your PRs merged into int downMergeDays (3) or more days ago whose change still isn't on downMergeTo (qat). Each PR once.
+const downMergeSaid = new Set();
+async function downMergeNudges(now) {
+  const to = cfg.downMergeTo; if (!to || rateLow()) return [];
+  const days = cfg.downMergeDays || 3, since = new Date(now - 14 * 86400000).toISOString().slice(0, 10), sent = new Set();
+  for (const person of HOSTED ? [...team] : email ? [email] : []) {
+    const items = (await search(`is:pr is:merged base:${cfg.branchBase || 'int'} author:${loginOf(person)} merged:>=${since}`).catch(() => ({ items: [] }))).items;
+    for (const p of items) {
+      const repo = p.repository_url.split('/').pop(), id = `${repo}#${p.number}`;
+      if (!cfg.repos.includes(repo) || downMergeSaid.has(id) || now - new Date(p.pull_request.merged_at) < days * 86400000) continue;
+      const pr = await gh(`/repos/${cfg.owner}/${repo}/pulls/${p.number}`).catch(() => null); if (!pr || !pr.merge_commit_sha) continue;
+      const cmp = await gh(`/repos/${cfg.owner}/${repo}/compare/${encodeURIComponent(to)}...${pr.merge_commit_sha}?per_page=1`).catch(() => null);
+      if (!cmp || cmp.status === 'behind' || cmp.status === 'identical') continue;   // already there
+      const key = keysIn(`${p.title} ${pr.head.ref}`)[0];
+      if (key && ((await jiraTicket(key)) || {}).cat === 'done') continue;   // finished ticket: nothing to chase
+      downMergeSaid.add(id); sent.add(person);
+      notify(person, `${key || shortRepo(repo) + ' #' + p.number} is on ${cfg.branchBase || 'int'} but not on ${to} yet`, `${p.title} · merged ${daysAgo(pr.merged_at, now)}`, p.html_url);
+    }
+  }
+  return [...sent];
 }
 
 const fired = new Set();   // "job + date" already run
@@ -934,7 +1215,8 @@ const dueNow = (spec, now) => {   // "12:00" (every day) or "Mon 10:00"
   return (!day || now.toLocaleDateString('en-US', { weekday: 'short' }) === day) && now.toTimeString().slice(0, 5) === slot;
 };
 async function runJobs(now = new Date()) {
-  const jobs = { prNudges: [cfg.prNudgeTime || '12:00', prNudges], dayCheck: [cfg.dayCheckTime || '18:00', dayCheck],
+  const jobs = { prNudges: [cfg.prNudgeTime || '12:00', prNudges], stuckNudges: [cfg.prNudgeTime || '12:00', stuckNudges],
+    downMergeNudges: [cfg.prNudgeTime || '12:00', downMergeNudges], dayCheck: [cfg.dayCheckTime || '18:00', dayCheck],
     staleNudges: [cfg.staleNudgeTime || 'Mon 10:00', staleNudges] }, ran = {};
   for (const [name, [spec, job]] of Object.entries(jobs)) {
     const key = `${name} ${now.toDateString()}`;
@@ -1030,7 +1312,8 @@ const server = http.createServer(async (req, res) => {
   }
   // Actions that change something: connect a Jira token, log time. Only from this hub's own page on this PC:
   // POST, our own header (other websites can't send it without a CORS check we never answer), addressed to localhost.
-  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i), '/api/scrum-log': i => logScrum(i) };
+  const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i), '/api/scrum-log': i => logScrum(i),
+    '/api/branch-delete': i => deleteBranch(i) };
   if (actions[url.pathname]) {
     const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '');
     if (HOSTED || req.method !== 'POST' || req.headers['x-magician-hub'] !== '1' || !local) return sendJson(res, 403, { error: 'Not allowed.' });
@@ -1052,7 +1335,8 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { hosted: HOSTED, viewer, signedIn: !!signedIn, team: [...team].sort(), repos: cfg.repos, owner: cfg.owner,
       jira: cfg.jiraUrl, links: cfg.links, ticketPrefixes: cfg.ticketPrefixes, jiraOn: !!JIRA_MODE && !jiraError && lastJira > 0, jiraError, jiraNeedsToken, jiraKeys,
       teamInfo, canLogTime: !HOSTED && JIRA_MODE === 'api' && !jiraNeedsToken ? jiraAuth.email : null,   // whose time a "Log" writes
-      deployEnvs: cfg.deployEnvs || [], deployDays: cfg.deployDays || 3, buildDays: cfg.buildDays || 14, deploys: [...deploys.values()].sort((a, b) => b.at.localeCompare(a.at)),
+      deployEnvs: cfg.deployEnvs || [], deployDays: cfg.deployCardDays || 3, buildDays: cfg.buildDays || 14,
+      deploys: [...deploys.values()].filter(x => Date.now() - new Date(x.at) < (cfg.deployCardDays || 3) * 86400000).sort((a, b) => b.at.localeCompare(a.at)),
       lastPoll, lastError, runs: list, prs, requests, events });
   }
   const q = name => (url.searchParams.get(name) || '').trim();
@@ -1060,8 +1344,10 @@ const server = http.createServer(async (req, res) => {
     '/api/fix': () => { const key = parseKey(q('key')); return key ? findFix(key) : { error: 'Enter a ticket key or Jira link, like Z10-41590.' }; },
     '/api/standup': () => team.has(q('person').toLowerCase()) ? standup(q('person').toLowerCase()) : { error: 'Pick your name at the top right first.' },
     '/api/ticket-time': () => ticketTime(q('key').toUpperCase()),
+    '/api/branches': () => staleBranches(!!q('refresh')),
+    '/api/lifecycle': () => { const key = parseKey(q('key')); return key ? lifecycle(key) : { error: 'Enter a ticket key or Jira link, like Z10-41590.' }; },
     '/api/release': () => q('from') && q('to') ? releaseNotes(q('from'), q('to')) : { error: 'Enter both refs, like v10.14.0.6 and v10.14.0.0-hotfixes.' },
-    '/api/impact': () => q('pr') ? impact(q('pr'), Math.max(0, parseInt(q('from'), 10) || 0)) : { error: 'Enter a PR link or a ticket key.' },
+    '/api/impact': () => q('pr') ? impact(q('pr'), Math.max(0, parseInt(q('from'), 10) || 0), !!q('estimate')) : { error: 'Enter a PR link or a ticket key.' },
     '/api/jira-mine': async () => {
       const person = q('person').toLowerCase();
       if (!team.has(person)) return { error: 'Pick your name at the top right first.' };
@@ -1093,7 +1379,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Used by test/popups.test.js; starting the hub (node hub.js) is below.
-module.exports = { poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
+module.exports = { stageOf, words, areaOf, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
   setSession: s => { token = s.token; email = s.email; },
   state: () => ({ runs: [...runs.values()], deploys: [...deploys.values()], prs, requests, lastError, events }) };
 

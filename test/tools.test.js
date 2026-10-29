@@ -372,6 +372,24 @@ test('log time form: estimate, logged and remaining for a ticket; add an estimat
   assert.equal(estimates.length, 1);
 });
 
+test('ticket stages: QA Done counts as done, review and QA are told apart', () => {
+  assert.deepEqual(['Backlog', 'Ready for Dev', 'Dev In Progress-HotFix', 'Code Review-HotFix', 'RFT-HotFix', 'QA In Progress', 'QA Done-HotFix', 'Done'].map(hub.stageOf),
+    ['todo', 'todo', 'dev', 'review', 'qa', 'qa', 'done', 'done']);
+});
+
+test('estimate keywords: distinctive words only, plurals folded', () => {
+  assert.deepEqual(hub.words('Webstore: CMS: Hidden Categories Continue to Appear in Category Widget'), ['cms', 'hidden', 'category', 'widget']);
+  assert.equal(hub.areaOf('znode10-api-migration', 'Znode.Engine.Api/Controllers/CategoryController.cs'), 'api · Api/Controllers');
+});
+
+test('branch delete: refused for protected branches, unknown branches and other websites', async () => {
+  assert.match((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'int', sha: 'x' })).body.error, /can't be deleted/);
+  assert.match((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'v10.14.0.0-hotfixes', sha: 'x' })).body.error, /can't be deleted/);
+  assert.match((await postJson('/api/branch-delete', { repo: 'not-ours', branch: 'Z10-1-x', sha: 'x' })).body.error, /can't be deleted/);
+  assert.match((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'Z10-1-change-int', sha: 'x' })).body.error, /not in the stale list/);
+  assert.equal((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'Z10-1-change-int', sha: 'x' }, {})).status, 403);   // no hub header
+});
+
 test('Friday reminder: once, on Friday at 16:00, when the week is under 40h', async () => {
   assert.deepEqual(await hub.timeReminder(new Date(2026, 9, 22, 16, 0)), []);   // Thursday
   assert.deepEqual(await hub.timeReminder(new Date(2026, 9, 23, 15, 0)), []);   // Friday, wrong time
@@ -383,7 +401,9 @@ test('Friday reminder: once, on Friday at 16:00, when the week is under 40h', as
 test('12:00 PR nudges: once a day, each to the PR author only', async () => {
   const noon = new Date(2026, 9, 26, 12, 0), before = hub.state().events.length;
   assert.deepEqual(await hub.runJobs(new Date(2026, 9, 26, 11, 59)), {});
-  assert.deepEqual(await hub.runJobs(noon), { prNudges: ['ben.kumar@amla.io'] });
+  const ran = await hub.runJobs(noon);
+  assert.deepEqual(ran.prNudges, ['ben.kumar@amla.io']);
+  assert.deepEqual([ran.stuckNudges, ran.downMergeNudges], [[], []]);   // nothing stuck in review/QA; no down-merge to chase
   const sent = hub.state().events.slice(before).map(e => `${e.person} | ${e.title}`);
   assert.equal(sent.length, 2);
   assert.match(sent[0], /^ben\.kumar@amla\.io \| Your PR api #1 was approved \d+ days ago\. Merge it$/);

@@ -378,7 +378,36 @@
   .env .by .av { width:20px; height:20px; font-size:9px; }
   .env .err-line { font:12px/1.4 var(--mono); color:var(--bad); overflow-wrap:anywhere; }
   .env .prev { font-size:11.5px; color:var(--muted); overflow-wrap:anywhere; }
-  .scrum3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
+  /* Ticket lifecycle: numbers, time per stage, timeline */
+  .lc { display:grid; gap:14px; padding:14px 16px; }
+  .lc .nums { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; }
+  .lc .num { border:1px solid var(--line); border-radius:12px; padding:9px 12px; display:grid; gap:2px; min-width:0; }
+  .lc .num span { font-size:11.5px; color:var(--muted); font-weight:600; }
+  .lc .num b { font-size:17px; font-weight:800; letter-spacing:-.01em; }
+  .lc .hands { font-size:12.5px; color:var(--fg-2); overflow-wrap:anywhere; }
+  .lc .stagebar { display:flex; height:14px; border-radius:99px; overflow:hidden; gap:2px; background:var(--panel-2); }
+  .lc .stagebar i { display:block; height:100%; min-width:3px; }
+  .st-todo { background:var(--line); } .st-dev { background:var(--brand); } .st-review { background:var(--warn); } .st-qa { background:var(--info); } .st-done { background:var(--ok); }
+  .lc .stages { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12px; color:var(--fg-2); }
+  .lc .stages span { display:inline-flex; align-items:center; gap:6px; }
+  .lc .stages i { width:9px; height:9px; border-radius:3px; }
+  .lc .stages b { color:var(--fg); }
+  .tl { list-style:none; margin:0; padding:0 0 0 4px; display:grid; gap:0; border-left:2px solid var(--line); }
+  .tl li { position:relative; padding:4px 0 8px 16px; font-size:12.5px; color:var(--fg-2); display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px; }
+  .tl time { white-space:nowrap; }
+  .tl li::before { content:""; position:absolute; left:-6px; top:8px; width:10px; height:10px; border-radius:50%; background:var(--panel); border:2px solid var(--muted); }
+  .tl li.k-move::before { border-color:var(--brand); } .tl li.k-merge::before { border-color:var(--ok); background:var(--ok); }
+  .tl li.k-deploy::before { border-color:var(--info); background:var(--info); } .tl li.k-review::before { border-color:var(--warn); }
+  .tl time { font:600 11.5px var(--mono); color:var(--muted); }
+  .tl b { color:var(--fg); font-weight:600; }
+  .tl a { color:inherit; }
+  @media (max-width:640px) { .tl li { grid-template-columns:1fr; gap:0; } }
+  .fixenvs { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; padding:14px 16px; }
+  .fixenv { border:1px solid var(--line); border-radius:12px; padding:10px 12px; display:grid; gap:4px; min-width:0; font-size:12.5px; color:var(--fg-2); }
+  .fixenv.yes { border-color:color-mix(in srgb, var(--ok) 40%, transparent); background:color-mix(in srgb, var(--ok) 6%, var(--panel)); }
+  .fixenv b { font:800 14px var(--font); color:var(--fg); display:flex; justify-content:space-between; align-items:center; gap:6px; }
+  .fixenv .br { font:600 11.5px var(--mono); color:var(--brand); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .scrum3 { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
   .scrum3 .col { border-top:3px solid var(--line); }
   .scrum3 .col.y { border-top-color:var(--ok); } .scrum3 .col.t { border-top-color:var(--brand); } .scrum3 .col.b { border-top-color:var(--warn); }
   .scrum3 .li .t { white-space:normal; }
@@ -437,6 +466,7 @@
       <div class="nav-label">Team</div>
       <a href="#prs" data-go="prs"><svg class="i" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>Team PRs<span class="badge" id="nb-prs"></span></a>
       <a href="#builds" data-go="builds"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Builds<span class="badge" id="nb-builds"></span></a>
+      <a href="#branches" data-go="branches"><svg class="i" viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>Branches</a>
       <div class="nav-label">Tools</div>
       <a href="#fix" data-go="fix"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Ticket lookup<span class="badge" title="Press / anywhere">/</span></a>
       <a href="#impact" data-go="impact"><svg class="i" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>Impact check</a>
@@ -484,6 +514,8 @@
       </select></label>
       <label class="field">Search<input id="fText" placeholder="Ticket, branch or title" autocomplete="off"></label>
       <button type="button" class="btn" id="fClear">Clear</button>
+      <button type="button" class="btn only-prs" id="prCopy" data-label="Copy list">Copy list</button>
+      <button type="button" class="btn only-prs" id="prCsv">Download CSV</button>
       <span class="count" id="fCount"></span>
     </div>
 
@@ -546,6 +578,18 @@
             <div class="row"><a class="btn" id="fixJira" target="_blank" rel="noopener">Open in Jira</a><button class="btn" type="button" id="fixImpact">Is it safe to merge?</button></div></div>
           <div class="pad-row row" id="fixInfo"></div>
         </div>
+        <div class="panel" id="lcPanel">
+          <div class="panel-h"><h2>Lifecycle</h2><span class="muted" id="lcNow"></span></div>
+          <div class="lc" id="lcBody"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Which branches have it</h2><span class="muted">checked on GitHub</span></div>
+          <div class="tbl"><table><thead id="fixHead"></thead><tbody id="fixRows"></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Deployed to</h2><span class="muted" id="fixEnvDays"></span></div>
+          <div class="fixenvs" id="fixEnvs"></div>
+        </div>
         <div class="panel">
           <div class="panel-h"><h2>Pull requests</h2></div>
           <div class="tbl"><table>
@@ -557,10 +601,6 @@
           <div class="tbl"><table>
             <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
             <tbody id="fixBuilds"></tbody></table></div>
-        </div>
-        <div class="panel">
-          <div class="panel-h"><h2>Which branches have it</h2></div>
-          <div class="tbl"><table><thead id="fixHead"></thead><tbody id="fixRows"></tbody></table></div>
         </div>
       </div>
     </section>
@@ -593,6 +633,30 @@
         <div class="tbl"><table>
           <thead><tr><th>Status</th><th>Build</th><th>Who</th><th>Updated</th></tr></thead>
           <tbody id="rows"><tr class="empty"><td colspan="4" class="emptyst"><span class="spinner lg"></span>Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- Branches -->
+    <section data-view="branches" class="stack" hidden>
+      <div class="panel">
+        <div class="panel-h"><h2>Stale branches</h2><div class="row"><span class="muted" id="brInfo"></span><button class="btn" id="brRefresh" type="button">Refresh</button></div></div>
+        <div class="periodbar">
+          <div class="seg" id="brWho" role="group" aria-label="Whose branches"><button type="button" data-w="me">Mine</button><button type="button" data-w="all">Everyone</button></div>
+          <label class="field">Repo<select id="brRepo"><option value="">All repos</option></select></label>
+          <label class="field">State<select id="brState"><option value="">Any</option><option value="merged">Merged (safe)</option><option value="open">Not merged</option></select></label>
+        </div>
+        <div class="hint pad" id="brMsg"></div>
+      </div>
+      <div class="kpis" id="brKpis">
+        <div class="kpi" id="br-k-all"><div class="top">Stale branches</div><div class="n">–</div><div class="sub"></div></div>
+        <div class="kpi" id="br-k-mine"><div class="top">Yours</div><div class="n">–</div><div class="sub"></div></div>
+        <div class="kpi" id="br-k-safe"><div class="top">Merged, safe to delete</div><div class="n">–</div><div class="sub"></div></div>
+      </div>
+      <div class="panel">
+        <div class="tbl"><table>
+          <thead><tr><th>Branch</th><th>Created by</th><th>Last commit</th><th>State</th><th></th></tr></thead>
+          <tbody id="brRows"></tbody>
         </table></div>
       </div>
     </section>
@@ -704,9 +768,17 @@
         <div class="searchbox">
           <input id="impPr" placeholder="PR link or ticket, e.g. Z10-41590" aria-label="PR link or ticket" autocomplete="off">
           <button class="btn primary" type="submit">Check</button>
+          <button class="btn" type="button" id="impEstimate" title="For a ticket: likely repos, areas and size, from similar finished tickets">Estimate from similar tickets</button>
         </div>
-        <div class="hint" id="impMsg">Reads the PR's changes for things that break other code: new or removed procedure parameters, dropped or renamed columns, changed API routes, removed model properties, interface methods, frontend exports, config settings, text keys and deleted files. Then finds where the other Znode repos use them.</div>
+        <div class="hint" id="impMsg">Reads the PR's changes for things that break other code: new or removed procedure parameters, dropped or renamed columns, changed API routes, removed model properties, interface methods, frontend exports, config settings, text keys and deleted files. Then finds where the other Znode repos use them. A ticket with no code yet gets an estimate from similar finished tickets.</div>
       </form>
+      <div id="impEst" class="stack" hidden>
+        <div class="verdict wait" id="estVerdict"></div>
+        <div class="grid2">
+          <div class="panel"><div class="panel-h"><h2>Likely areas</h2><span class="muted">from the similar tickets' PRs</span></div><div id="estAreas"></div></div>
+          <div class="panel"><div class="panel-h"><h2>Similar finished tickets</h2><span class="muted" id="estSimCount"></span></div><div id="estSimilar"></div></div>
+        </div>
+      </div>
       <div id="impOut" class="stack" hidden>
         <div class="verdict" id="impVerdict"></div>
         <div class="panel">
@@ -803,7 +875,8 @@ const VIEWS = {
   standup: ['Daily Scrum', 'Yesterday, today and blockers, from GitHub and Jira'],
   time: ['Time Log', 'Log time in Jira, and see what is left today'],
   release: ['Release notes', 'Tickets between two tags or branches'],
-  impact: ['Impact check', 'Will a PR break another repo?']
+  impact: ['Impact check', 'Will a PR break another repo?'],
+  branches: ['Branches', 'Stale branches to clean up']
 };
 let view = 'overview';
 function show(v) {
@@ -819,6 +892,7 @@ function show(v) {
   render();
   if (v === 'standup') loadStandup();
   if (v === 'time') loadTime();
+  if (v === 'branches') loadBranches();
 }
 
 // Theme: follows Windows unless you pick one.
@@ -1002,6 +1076,31 @@ function filtered(d) {
   return { runs, prs };
 }
 
+// Team PRs export: the list as the filters show it, as text for Teams or as a CSV file for Excel.
+function prExportRows() {
+  const { prs } = filtered(state), days = p => Math.floor((Date.now() - new Date(p.created)) / DAY);
+  return prs.map(p => {
+    const key = keysOf(`${p.title} ${p.head}`)[0] || '', t = key && state.jiraKeys[key];
+    return { repo: shortRepo(p.repo), number: p.number, title: p.title, author: personName(p.author), into: p.base, branch: p.head,
+      review: (REVIEW[p.review] || REVIEW.none)[0], reviewers: p.reviewers.map(personName).join('; '), jira: key ? `${key}${t ? ' ' + t.status : ''}` : '',
+      created: new Date(p.created).toLocaleDateString('en-CA'), waiting: days(p), parked: whyParked(p) || '', url: p.url };
+  });
+}
+$('prCopy').addEventListener('click', e => {
+  const rows = prExportRows();
+  const text = [`Team PRs (${rows.length})`, ...rows.map(r => `• ${r.repo} #${r.number} ${r.title} · ${r.author} · ${r.review} · ${r.waiting}d${r.parked ? ' · ' + r.parked : ''}\n  ${r.url}`)].join('\n');
+  copyText(text, e.currentTarget);
+});
+$('prCsv').addEventListener('click', () => {
+  const rows = prExportRows(), cols = ['repo', 'number', 'title', 'author', 'into', 'branch', 'review', 'reviewers', 'jira', 'created', 'waiting', 'parked', 'url'];
+  const head = ['Repo', 'PR', 'Title', 'Author', 'Into', 'Branch', 'Review', 'Reviewers', 'Jira', 'Created', 'Waiting (days)', 'Parked', 'Link'];
+  const cell = v => { const t = String(v ?? ''); return /[",\n]|^[=+\-@]/.test(t) ? '"' + t.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""') + '"' : t; };   // quoted; no spreadsheet formulas
+  const csv = '\ufeff' + [head, ...rows.map(r => cols.map(c => r[c]))].map(r => r.map(cell).join(',')).join('\r\n');
+  const a = el('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `team-prs-${new Date().toLocaleDateString('en-CA')}.csv`; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
 // Who is looking: the company sign-in (hosted), the name picked here, or your Git email (local).
 function viewer() { return (state && state.signedIn && state.viewer) || store.get('hub.me') || (state && state.viewer) || ''; }
 const isMe = login => !!viewer() && login.toLowerCase().startsWith(nameOf(viewer()));
@@ -1073,6 +1172,7 @@ async function load() {
   loadMyJira();
   if (first && view === 'standup') loadStandup();   // opened straight on these pages: load once we know who is looking
   if (first && view === 'time') loadTime();
+  if (first && view === 'branches') loadBranches();
 }
 
 function kpi(id, n, sub, level) {
@@ -1284,6 +1384,22 @@ $('fixForm').addEventListener('submit', async e => {
       const m = el('span', 'mark ' + cls); m.append(icon(ic), text); cell(tr, m);
     }
   }
+  // Deployed to: a successful deploy of the ticket's branch, or of a branch that already had the fix
+  const envBox = $('fixEnvs'); envBox.textContent = '';
+  $('fixEnvDays').textContent = `deploys in the last ${d.deployDays || 14} days`;
+  (d.environments || []).forEach(x => {
+    const card = el('div', 'fixenv' + (x.deployed ? ' yes' : '')), head = el('b', null, x.env);
+    head.append(x.deployed ? pill('Deployed', 's-ok') : pill('Not deployed', 's-off'));
+    card.append(head);
+    if (x.deployed) {
+      const br = el('div', 'br', x.deployed.branch); br.title = x.deployed.branch;
+      card.append(br, el('span', null, `${personName(x.deployed.who)} · ${ago(x.deployed.at)}`));
+      if (x.deployed.services.length) card.append(el('span', 'muted', x.deployed.services.map(svcName).join(', ')));
+      card.title = x.deployed.via === 'ticket branch' ? 'Deployed from the ticket\'s own branch' : `Deployed from ${x.deployed.via}, which has the fix`;
+    } else card.append(el('span', 'muted', 'No deploy with this fix'));
+    envBox.append(card);
+  });
+  envBox.closest('.panel').hidden = !(d.environments || []).length;
   const prs = $('fixPrs');
   if (!d.pulls.length) emptyRow(prs, 'No PRs yet', '', 3); else prs.textContent = '';
   const PR_STATE = { merged: 's-ok', open: 's-run', closed: 's-off' };
@@ -1296,7 +1412,122 @@ $('fixForm').addEventListener('submit', async e => {
     cell(tr, st, 'fit');
   }
   $('fixOut').hidden = false;
+  loadLifecycle(d.key);
 });
+
+// Ticket lifecycle: time per Jira status, then a timeline of Jira moves, PRs, reviews, merges and deploys.
+const dur = h => h >= 24 ? `${Math.floor(h / 24)}d${Math.round(h % 24) ? ' ' + Math.round(h % 24) + 'h' : ''}` : h >= 1 ? `${Math.round(h)}h` : `${Math.max(1, Math.round(h * 60))}m`;
+const STAGE_LABEL = { todo: 'Not started', dev: 'Dev', review: 'Code review', qa: 'QA', done: 'Done' };
+async function loadLifecycle(key) {
+  const box = $('lcBody'), now = $('lcNow'); box.textContent = ''; now.textContent = '';
+  box.append(el('div', 'hint busy')); box.firstChild.append(el('span', 'spinner lg'), 'Reading the ticket history…');
+  let d;
+  try { const res = await fetch('/api/lifecycle?key=' + encodeURIComponent(key)); d = await res.json(); if (!res.ok) throw new Error(d.error); }
+  catch (e) { box.textContent = ''; box.append(el('div', 'muted', e.message || 'Hub is not running.')); return; }
+  if (($('fixKey').value || '').toUpperCase().indexOf(key) < 0 && !$('fixKeyLabel').textContent.startsWith(key)) return;   // another ticket meanwhile
+  box.textContent = '';
+  const j = d.jira && !d.jira.error ? d.jira : null, fmt = t => { const x = new Date(t); return `${x.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`; };
+  if (j) {
+    const sumOf = st => j.stages.filter(x => x.stage === st).reduce((n, x) => n + x.hours, 0), cur = j.stages[j.stages.length - 1];
+    now.textContent = cur.stage === 'done' ? `${j.status} since ${new Date(cur.from).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : `now ${j.status} for ${dur(cur.hours)}`;
+    const nums = el('div', 'nums'), num = (label, value) => { const n = el('div', 'num'); n.append(el('span', null, label), el('b', null, value)); nums.append(n); };
+    num('Created', new Date(j.created).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }));
+    const doneAt = j.resolved || (cur.stage === 'done' ? cur.from : null);   // Jira may leave the resolution date empty
+    num(doneAt ? 'Lead time' : 'Open for', dur((new Date(doneAt || Date.now()) - new Date(j.created)) / 3600000));
+    num('In dev', dur(sumOf('dev'))); num('In code review', dur(sumOf('review'))); num('In QA', dur(sumOf('qa')));
+    const firstMerge = d.prs.filter(p => p.merged).map(p => p.merged).sort()[0];
+    if (firstMerge) num('Dev start → merged', dur((new Date(firstMerge) - new Date((j.stages.find(x => x.stage === 'dev') || j.stages[0]).from)) / 3600000));
+    // Hands it passed through, in order (one line instead of every re-assignment)
+    const hands = []; j.assigns.sort((x, y) => x.at.localeCompare(y.at)).forEach(a => { if (a.to && a.to !== 'nobody' && hands[hands.length - 1] !== a.to) hands.push(a.to); });
+    const people = [...new Set(hands)];   // each person once, in the order they first got it
+    if (people.length) box.append(Object.assign(el('div', 'hands'), { textContent: `People: ${people.join(', ')}${hands.length > people.length ? ` (${hands.length - 1} hand-overs)` : ''}` }));
+    // Time per stage, in order
+    const total = j.stages.reduce((n, x) => n + x.hours, 0) || 1, bar = el('div', 'stagebar'), legend = el('div', 'stages');
+    j.stages.forEach(x => { const i = el('i', 'st-' + x.stage); i.style.width = (x.hours / total * 100) + '%'; i.title = `${x.status} · ${dur(x.hours)}`; bar.append(i); });
+    j.perStatus.filter(x => x.hours >= 0.05 || x.status === j.status).forEach(x => { const sp = el('span'); sp.append(el('i', 'st-' + x.stage), x.status, el('b', null, dur(x.hours))); legend.append(sp); });
+    box.prepend(nums); box.append(bar, legend);
+  } else box.append(el('div', 'muted', (d.jira && d.jira.error) || 'Connect Jira (sidebar) to see the status history.'));
+  // Timeline
+  const ev = [];
+  if (j) {
+    ev.push({ at: j.created, k: 'move', t: ['Created', j.reporter ? ` by ${personName(j.reporter)}` : ''] });
+    j.moves.forEach(m => ev.push({ at: m.at, k: 'move', t: [`${m.from} → `, el('b', null, m.to), m.by ? ` · ${personName(m.by)}` : ''] }));
+  }
+  d.prs.forEach(p => {
+    const name = `${shortRepo(p.repo)} #${p.number}`;
+    ev.push({ at: p.opened, k: 'pr', t: ['PR ', link(name, p.url), ` opened into ${p.base} · ${personName(p.author)}`] });
+    const seen = new Set();
+    p.reviews.filter(r => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED').forEach(r => {
+      const id = r.by + r.state; if (seen.has(id)) return; seen.add(id);   // first approval / change request per reviewer
+      ev.push({ at: r.at, k: 'review', t: [r.state === 'APPROVED' ? 'Approved ' : 'Changes requested on ', link(name, p.url), ` · ${personName(r.by)}`] });
+    });
+    if (p.merged) ev.push({ at: p.merged, k: 'merge', t: ['Merged ', link(name, p.url), ' into ', el('b', null, p.base)] });
+    else if (p.state === 'closed') ev.push({ at: p.closed, k: 'pr', t: ['Closed without merging ', link(name, p.url)] });
+  });
+  d.deployed.forEach(x => ev.push({ at: x.at, k: 'deploy', t: [`${x.ok ? 'Deployed to' : 'Deploy failed on'} `, el('b', null, x.env), ` · ${personName(x.who)} · `, el('span', 'mono', x.branch)] }));
+  if (j && j.resolved) ev.push({ at: j.resolved, k: 'merge', t: ['Resolved'] });
+  const list = el('ul', 'tl');
+  ev.sort((a, b) => a.at.localeCompare(b.at)).forEach(e => { const li = el('li', 'k-' + e.k), txt = el('span'); txt.append(...e.t); li.append(el('time', null, fmt(e.at)), txt); list.append(li); });
+  if (ev.length) box.append(list); else box.append(el('div', 'muted', 'No history found yet.'));
+}
+
+// Branches: stale team branches (no commit for 30+ days, no open PR). Only the person who created a branch can delete it.
+let branchData = null, brWho = store.get('hub.brWho') || 'me';
+async function loadBranches(refresh) {
+  if (!state) return;   // load() calls again once the data is in
+  const msg = $('brMsg');
+  if (!branchData || refresh) {
+    const d = await tool('/api/branches', refresh ? { refresh: 1 } : {}, msg);
+    if (!d) return;
+    branchData = d;
+  }
+  renderBranches();
+}
+function renderBranches() {
+  const d = branchData; if (!d) return;
+  const me = viewer() || d.me, repoSel = $('brRepo');
+  if (repoSel.dataset.filled !== '1') { [...new Set(d.branches.map(b => b.repo))].sort().forEach(r => { const o = el('option', null, shortRepo(r)); o.value = r; repoSel.append(o); }); repoSel.dataset.filled = '1'; }
+  document.querySelectorAll('#brWho button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.w === brWho)));
+  const list = d.branches.filter(b => (brWho === 'all' || b.creator === me) && (!repoSel.value || b.repo === repoSel.value)
+    && (!$('brState').value || ($('brState').value === 'merged' ? b.merged : !b.merged)));
+  const mine = d.branches.filter(b => b.creator === me);
+  kpi('br-k-all', d.branches.length, `no commit for ${d.days}+ days, no open PR`, '');
+  kpi('br-k-mine', mine.length, mine.length ? `${mine.filter(b => b.merged).length} of them merged` : 'nothing to clean up', mine.length ? 'warn' : '');
+  kpi('br-k-safe', d.branches.filter(b => b.merged).length, 'everything on them is already in the base branch', '');
+  $('brInfo').textContent = `checked ${ago(d.at)}`;
+  const msg = $('brMsg'); msg.textContent = d.paused || (d.pending ? `Still checking ${d.pending} more branches in the background. Refresh in a few minutes.` : '');
+  const body = $('brRows'); body.textContent = '';
+  if (!list.length) emptyRow(body, brWho === 'me' ? 'No stale branches of yours' : 'No stale branches', brWho === 'me' ? 'Nice and tidy.' : '', 5);
+  list.forEach(b => {
+    const tr = body.insertRow(), name = el('div', 'build'), sub = el('div', 'sub');
+    name.append(link(b.name, `https://github.com/${state.owner}/${b.repo}/tree/${b.name.split('/').map(encodeURIComponent).join('/')}`, 'br-name'));
+    sub.append(repoChip(b.repo)); if (b.pr) sub.append(link(`PR #${b.pr.number} ${b.pr.state}`, b.pr.url));
+    name.append(sub); cell(tr, name); cell(tr, who(b.creator), 'fit');
+    const days = Math.floor((Date.now() - new Date(b.at)) / DAY), t = cell(tr, `${new Date(b.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · ${days} days`, 'fit muted');
+    t.title = new Date(b.at).toLocaleString();
+    cell(tr, b.merged ? pill('Merged', 's-ok') : pill(b.ahead ? `${b.ahead} commit${b.ahead === 1 ? '' : 's'} not in ${b.into}` : 'Not merged', 's-warn'), 'fit');
+    const act = el('div', 'review');
+    if (!state.hosted && b.creator === (state.viewer || d.me)) {
+      const del = el('button', 'btn sm', 'Delete'); del.type = 'button';
+      del.onclick = async () => {
+        const warn = b.merged ? '' : `\n\nIt is NOT merged: ${b.ahead || 'some'} commit(s) on it are not in ${b.into}. They will be lost unless they exist elsewhere.`;
+        if (!confirm(`Delete branch "${b.name}" from ${shortRepo(b.repo)} on GitHub?${warn}\n\nThis can't be undone.`)) return;
+        del.disabled = true; del.textContent = 'Deleting…';
+        try {
+          const res = await fetch('/api/branch-delete', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' }, body: JSON.stringify({ repo: b.repo, branch: b.name, sha: b.sha }) });
+          const r = await res.json();
+          if (!res.ok) { del.disabled = false; del.textContent = 'Delete'; act.append(el('span', 'reason', r.error)); return; }
+          branchData.branches = branchData.branches.filter(x => !(x.repo === b.repo && x.name === b.name)); renderBranches();
+        } catch (e) { del.disabled = false; del.textContent = 'Delete'; }
+      };
+      act.append(del);
+    } else act.append(el('span', 'muted', b.creator === (state.viewer || d.me) ? '' : `only ${personName(b.creator).split(' ')[0]}`));
+    cell(tr, act, 'fit');
+  });
+}
+document.querySelectorAll('#brWho button').forEach(b => b.addEventListener('click', () => { brWho = b.dataset.w; store.set('hub.brWho', brWho); renderBranches(); }));
+$('brRepo').addEventListener('input', renderBranches); $('brState').addEventListener('input', renderBranches);
+$('brRefresh').addEventListener('click', () => loadBranches(true));
 
 // Press / anywhere (outside a text box) to look up a ticket.
 document.addEventListener('keydown', e => {
@@ -1774,7 +2005,10 @@ const CATEGORIES = [['Database procedure', 'database procedures'], ['Database co
 async function checkImpact(from) {
   const d = await tool('/api/impact', { pr: imp.input, from }, $('impMsg'));
   if (!d) return;
-  if (!d.prs.length) { $('impMsg').textContent = 'No open PRs for that ticket.'; return; }
+  if (!d.prs.length) {
+    if (d.estimate) return renderEstimate(d.estimate);
+    $('impMsg').textContent = 'No open PRs for that ticket.'; return;
+  }
   if (!imp.findings) Object.assign(imp, { prs: d.prs, total: d.total, stats: d.stats, findings: d.findings });
   else d.findings.slice(d.from, d.checkedTo).forEach(x => {   // later batches: take the usages just checked
     const mine = imp.findings.find(n => n.kind === x.kind && n.name === x.name); if (mine) mine.usages = x.usages;
@@ -1825,8 +2059,44 @@ function renderImpact() {
   $('impMore').textContent = `Check next ${Math.min(8, unchecked.length)} (${unchecked.length} left)`;
   $('impOut').hidden = false;
 }
+// Estimate (no code yet): what similar finished tickets changed, as likely repos, areas, size and risks
+const RISK_TIP = { 'Database procedure': 'procedure parameters changed: check every caller', 'C# data model': 'API models changed: check clients and other repos',
+  'API route': 'routes changed: check gateways and callers', 'Database column': 'columns dropped or renamed', 'Interface method': 'interfaces changed',
+  'Exported code': 'shared frontend exports changed', 'Config setting': 'config keys changed', 'Text resource': 'text keys removed', 'Deleted or renamed file': 'files removed or renamed' };
+function renderEstimate(e) {
+  $('impOut').hidden = true; $('impMsg').textContent = '';
+  if (e.error && !(e.similar || []).length) { $('impMsg').textContent = e.error; return; }
+  const v = $('estVerdict'); v.textContent = '';
+  const n = e.basedOn, s = x => x === 1 ? '' : 's';
+  v.className = 'verdict ' + (n ? 'wait' : 'ok');
+  v.append(el('b', null, n ? `Estimate for ${e.key}: about ${e.size.files} file${s(e.size.files)}, ~${e.size.lines} line${s(e.size.lines)}, ${e.size.prs} PR${s(e.size.prs)}` : `No similar ticket with code for ${e.key}`));
+  v.append(el('span', null, n ? `Typical of ${n} similar finished ticket${s(n)} (they ranged ${e.size.minLines}–${e.size.maxLines} lines). It's a guide, not an analysis of code that doesn't exist yet.`
+    : 'Similar tickets were found, but none had a merged PR in these repos, so there is nothing to size from.'));
+  const list = el('ul', 'checks'), line = (ok, text) => { const li = el('li'); li.append(icon(ok ? 'check' : 'alert'), el('span', null, text)); list.append(li); };
+  if (n) {
+    line(true, 'Likely repos: ' + e.repos.map(r => `${shortRepo(r.name)} (${r.pct}%)`).join(', '));
+    if (e.risks.length) e.risks.forEach(r => line(false, `${r.count} of ${n} similar ticket${s(r.count)}: ${RISK_TIP[r.name] || r.name}`));
+    else line(true, 'None of them changed procedures, API models, routes or other things that break callers');
+  }
+  v.append(list, el('span', 'scope', `Matched on the words: ${e.keywords.join(', ')}. Summary: ${e.summary}`));
+  const areas = $('estAreas'); areas.textContent = '';
+  (e.areas || []).forEach(a => listItem(areas, tag('brand', 'arrow'), a.name, `${a.count} of ${n} similar ticket${s(a.count)} changed code here`, `${Math.round(a.count / n * 100)}%`));
+  if (!(e.areas || []).length) emptyBox(areas, 'No areas to show', 'No code from similar tickets.');
+  const sim = $('estSimilar'); sim.textContent = ''; $('estSimCount').textContent = `${(e.similar || []).length} found`;
+  (e.similar || []).forEach(t => {
+    const right = el('span', 'r', t.prs.length ? `${t.files} file${s(t.files)} · ${t.lines} lines` : 'no PR');
+    listItem(sim, el('span', 'chip', t.key), t.summary, `same words: ${t.shared.join(', ')}${t.prs.length ? ' · ' + t.prs.map(p => `${shortRepo(p.repo)} #${p.number}`).join(', ') : ''}`, right, jiraUrl(t.key));
+  });
+  $('impEst').hidden = false;
+}
+$('impEstimate').addEventListener('click', async () => {
+  $('impOut').hidden = true; $('impEst').hidden = true;
+  const d = await tool('/api/impact', { pr: $('impPr').value.trim(), estimate: 1 }, $('impMsg'));
+  if (d && d.estimate) renderEstimate(d.estimate);
+});
+
 $('impForm').addEventListener('submit', e => {
-  e.preventDefault(); $('impOut').hidden = true;
+  e.preventDefault(); $('impOut').hidden = true; $('impEst').hidden = true;
   imp = { input: $('impPr').value.trim() };
   checkImpact(0);
 });
