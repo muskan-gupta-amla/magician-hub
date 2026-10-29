@@ -246,6 +246,108 @@ async function pollDeploys() {
   if (changed) saveDeploys();
 }
 
+// Start a deploy the way "Run workflow" does in GitHub, with your own login, on DEV4 and DEV10 only (triggerEnvs). GitHub lets only
+// people with write access to the DevOps repo start one; the hub checks that first and says why when you can't. The workflow's own
+// inputs (tenant, namespace ...) and the service -> repo map (.github/services-config.json) are read from the repo, so they stay current.
+const TRIGGER_ENVS = () => (cfg.triggerEnvs || ['DEV4', 'DEV10']).map(e => e.toUpperCase());
+const BRANCH_OK = /^[\w.\-/]{1,200}$/;
+let deployMeta = null, deployMetaAt = 0;   // read again after 10 minutes
+const lastTrigger = new Map();   // env -> when this hub last started a deploy there (no double clicks)
+async function deployFile(file) {
+  const f = await gh(`/repos/${cfg.owner}/${cfg.deployRepo}/contents/${file}`);
+  return Buffer.from(f.content, 'base64').toString('utf8');
+}
+// The workflow_dispatch inputs of a workflow file with their defaults (as much YAML as these files use).
+function dispatchInputs(yml) {
+  const out = {}, lines = yml.split(/\r?\n/);
+  const wd = lines.findIndex(l => /^\s*workflow_dispatch:\s*$/.test(l)), at = lines.findIndex((l, j) => j > wd && /^\s*inputs:\s*$/.test(l));
+  if (wd < 0 || at < 0) return out;
+  const top = lines[at].search(/\S/);
+  let name = null, nameAt = null;
+  for (const l of lines.slice(at + 1)) {
+    if (!l.trim() || l.trim().startsWith('#')) continue;
+    const ind = l.search(/\S/), m = /^\s*([\w-]+):\s*(.*)$/.exec(l);
+    if (ind <= top) break;
+    if (!m) continue;
+    if (nameAt === null || ind <= nameAt) { nameAt = ind; name = m[1]; out[name] = { default: '', type: 'string' }; }
+    else if (m[1] === 'default' || m[1] === 'type') out[name][m[1]] = m[2].trim().replace(/^'([\s\S]*)'$/, (x, v) => v.replace(/''/g, "'")).replace(/^"(.*)"$/, '$1');
+  }
+  return out;
+}
+async function readDeployMeta() {
+  if (deployMeta && Date.now() - deployMetaAt < 600000) return deployMeta;
+  const [wf, repo, svcCfg] = await Promise.all([gh(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/workflows?per_page=100`),
+    gh(`/repos/${cfg.owner}/${cfg.deployRepo}`), deployFile('.github/services-config.json')]);
+  const repoOf = {}; JSON.parse(svcCfg).forEach(x => { repoOf[x.service] = String(x.repository || '').split('/').pop(); });
+  const envs = {};
+  for (const env of TRIGGER_ENVS()) {
+    const w = wf.workflows.find(x => x.state === 'active' && ((DEPLOY_RE.exec(x.name) || [])[1] || '').toUpperCase() === env);
+    if (!w) continue;
+    const inputs = dispatchInputs(await deployFile(w.path));
+    let codes = []; try { codes = Object.keys(JSON.parse(inputs.services.default)); } catch (e) { /* not the usual shape: nothing to offer */ }
+    envs[env] = { id: w.id, file: path.basename(w.path), inputs, services: codes.map(code => ({ code, repo: repoOf[code] || '' })) };
+  }
+  deployMeta = { ref: repo.default_branch, canPush: !!(repo.permissions && repo.permissions.push), envs };
+  deployMetaAt = deployMeta.canPush ? Date.now() : 0;   // no write access yet: ask again next time, so access given today works at once
+  return deployMeta;
+}
+// Is someone on that environment: deploys still running, or one by someone else in the last hour (yours would replace it).
+function envBusy(env) {
+  const list = [...deploys.values()].filter(d => d.env === env).sort((a, b) => b.at.localeCompare(a.at));
+  const brief = d => ({ who: d.who, branch: d.branch, at: d.at, url: d.url, services: d.services.map(x => x.code) });
+  const last = list.find(d => d.status === 'completed');
+  const recent = last && last.who !== email && Date.now() - new Date(last.updated || last.at) < (cfg.deployBusyMinutes || 60) * 60000;
+  return { running: list.filter(d => d.status !== 'completed').map(brief), recent: recent ? brief(last) : null };
+}
+async function deployForm(env) {
+  env = String(env || '').toUpperCase();
+  if (HOSTED) return { error: 'Start deploys from your own PC.' };
+  if (!cfg.deployRepo || !TRIGGER_ENVS().includes(env)) return { error: `The hub starts deploys on ${TRIGGER_ENVS().join(' and ')} only. Use GitHub for ${env || 'others'}.` };
+  const m = await readDeployMeta(), w = m.envs[env];
+  if (!w) return { error: `There is no active "Trigger - Z10 ${env}" workflow in ${cfg.deployRepo}.` };
+  return { env, canDeploy: m.canPush, why: m.canPush ? '' : `Deploying needs write access to ${cfg.deployRepo} on GitHub. Ask DevOps for it.`,
+    services: w.services, branch: (w.inputs.branch || {}).default || '', url: `https://github.com/${cfg.owner}/${cfg.deployRepo}/actions/workflows/${w.file}`, ...envBusy(env) };
+}
+// What a deploy would do, checked: allowed, a real branch in every chosen service's repo, and who is on the environment.
+async function deployPlan({ env, branch, services }) {
+  const form = await deployForm(env);
+  if (form.error) return form;
+  if (!form.canDeploy) return { error: form.why };
+  branch = String(branch || '').trim();
+  if (!BRANCH_OK.test(branch) || branch.includes('..')) return { error: 'Enter a branch name, like Z10-41590-cart-total-int.' };
+  const known = new Map(form.services.map(x => [x.code, x]));
+  const picked = [...new Set(Array.isArray(services) ? services : String(services || '').split(','))].filter(Boolean);
+  if (!picked.length) return { error: 'Pick at least one service.' };
+  if (picked.some(c => !known.has(c))) return { error: 'That service is not in the workflow any more. Reload the page and pick again.' };
+  const repos = [...new Set(picked.map(c => known.get(c).repo).filter(Boolean))];
+  const ref = branch.split('/').map(encodeURIComponent).join('/');
+  const has = await Promise.all(repos.map(r => gh(`/repos/${cfg.owner}/${r}/branches/${ref}`).then(() => true, () => false)));
+  return { env: form.env, branch, services: picked.map(c => known.get(c)), missing: repos.filter((r, i) => !has[i]), running: form.running, recent: form.recent, url: form.url };
+}
+async function triggerDeploy(input) {
+  const p = await deployPlan(input || {});
+  if (p.error) return p;
+  if (p.missing.length) return { error: `${p.branch} is not a branch in ${p.missing.map(shortRepo).join(', ')}.` };
+  const last = lastTrigger.get(p.env);
+  if (last && Date.now() - last < 120000) return { error: `You started a ${p.env} deploy less than 2 minutes ago. It shows up on the card within a minute.` };
+  const w = deployMeta.envs[p.env], inputs = {}, svc = JSON.parse(w.inputs.services.default), picked = new Set(p.services.map(x => x.code));
+  for (const [k, v] of Object.entries(w.inputs)) if (v.default !== '') inputs[k] = v.default;   // the workflow's own defaults (tenant, namespace ...)
+  Object.keys(svc).forEach(k => { svc[k] = picked.has(k); });
+  Object.assign(inputs, { branch: p.branch, services: JSON.stringify(svc) });
+  if ('all' in w.inputs) inputs.all = 'false';   // never "deploy all services"
+  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.deployRepo}/actions/workflows/${w.id}/dispatches`, { method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'magician-hub', Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref: deployMeta.ref, inputs }) });
+  if (res.status !== 204) {
+    const why = await res.json().catch(() => ({}));
+    return { error: res.status === 403 || res.status === 404 ? `GitHub did not allow it: deploying needs write access to ${cfg.deployRepo}.` : `GitHub answered ${res.status}${why.message ? ': ' + why.message : ''}.` };
+  }
+  lastTrigger.set(p.env, Date.now());
+  console.log(`Started ${p.env} deploy of ${p.branch} (${[...picked].join(', ')}) as ${email}`);
+  setTimeout(() => pollDeploys().catch(() => {}), 15000).unref();   // GitHub lists the new run after a few seconds
+  return { ok: true, env: p.env, branch: p.branch, services: p.services, url: p.url };
+}
+
 const search = q => gh(`/search/issues?per_page=50&q=${encodeURIComponent(`${q} org:${cfg.owner}`)}`);
 
 function prSummary(p, repo) {
@@ -1269,7 +1371,7 @@ const server = http.createServer(async (req, res) => {
   // Actions that change something: connect a Jira token, log time. Only from this hub's own page on this PC:
   // POST, our own header (other websites can't send it without a CORS check we never answer), addressed to localhost.
   const actions = { '/api/jira-token': i => connectJira(i.email, i.token), '/api/worklog': i => logWork(i), '/api/estimate': i => setEstimate(i), '/api/scrum-log': i => logScrum(i),
-    '/api/branch-delete': i => deleteBranch(i) };
+    '/api/branch-delete': i => deleteBranch(i), '/api/deploy': i => triggerDeploy(i) };
   if (actions[url.pathname]) {
     const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '');
     if (HOSTED || req.method !== 'POST' || req.headers['x-magician-hub'] !== '1' || !local) return sendJson(res, 403, { error: 'Not allowed.' });
@@ -1281,7 +1383,7 @@ const server = http.createServer(async (req, res) => {
       const result = await actions[url.pathname](input);
       return sendJson(res, result.error ? 400 : 200, result);
     } catch (e) {
-      return sendJson(res, 502, { error: 'Could not reach Jira. Try again.' });
+      return sendJson(res, 502, { error: `Could not reach ${/branch|deploy/.test(url.pathname) ? 'GitHub' : 'Jira'}. Try again.` });
     }
   }
   if (url.pathname === '/api/state') {
@@ -1291,7 +1393,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { hosted: HOSTED, viewer, signedIn: !!signedIn, team: [...team].sort(), repos: cfg.repos, owner: cfg.owner,
       jira: cfg.jiraUrl, links: cfg.links, ticketPrefixes: cfg.ticketPrefixes, jiraOn: !!JIRA_MODE && !jiraError && lastJira > 0, jiraError, jiraNeedsToken, jiraKeys,
       teamInfo, canLogTime: !HOSTED && JIRA_MODE === 'api' && !jiraNeedsToken ? jiraAuth.email : null,   // whose time a "Log" writes
-      deployEnvs: cfg.deployEnvs || [], deployDays: cfg.deployCardDays || 3, buildDays: cfg.buildDays || 14,
+      deployEnvs: cfg.deployEnvs || [], triggerEnvs: HOSTED || !cfg.deployRepo ? [] : TRIGGER_ENVS(), deployDays: cfg.deployCardDays || 3, buildDays: cfg.buildDays || 14,
       deploys: [...deploys.values()].filter(x => Date.now() - new Date(x.at) < (cfg.deployCardDays || 3) * 86400000).sort((a, b) => b.at.localeCompare(a.at)),
       teamDeploys: [...deploys.values()].filter(x => team.has(x.who) && x.at >= buildSince()).sort((a, b) => b.at.localeCompare(a.at)),
       checkWorkflows: cfg.checkWorkflows || 'code review|spectral|lint|nuget|sonar|label|jira|stale|dependabot|codeql',
@@ -1303,6 +1405,8 @@ const server = http.createServer(async (req, res) => {
     '/api/standup': () => team.has(q('person').toLowerCase()) ? standup(q('person').toLowerCase()) : { error: 'Pick your name at the top right first.' },
     '/api/ticket-time': () => ticketTime(q('key').toUpperCase()),
     '/api/branches': () => staleBranches(!!q('refresh')),
+    '/api/deploy-form': () => deployForm(q('env')),
+    '/api/deploy-check': () => deployPlan({ env: q('env'), branch: q('branch'), services: q('services') }),
     '/api/lifecycle': () => { const key = parseKey(q('key')); return key ? lifecycle(key) : { error: 'Enter a ticket key or Jira link, like Z10-41590.' }; },
     '/api/release': () => q('from') && q('to') ? releaseNotes(q('from'), q('to')) : { error: 'Enter both refs, like v10.14.0.6 and v10.14.0.0-hotfixes.' },
     '/api/impact': () => q('pr') ? impact(q('pr'), Math.max(0, parseInt(q('from'), 10) || 0)) : { error: 'Enter a PR link or a ticket key.' },
@@ -1337,7 +1441,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Used by test/popups.test.js; starting the hub (node hub.js) is below.
-module.exports = { stageOf, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
+module.exports = { stageOf, dispatchInputs, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
   setSession: s => { token = s.token; email = s.email; },
   state: () => ({ runs: [...runs.values()], deploys: [...deploys.values()], prs, requests, lastError, events }) };
 

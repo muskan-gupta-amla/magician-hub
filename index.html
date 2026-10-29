@@ -378,6 +378,27 @@
   .env .by .av { width:20px; height:20px; font-size:9px; }
   .env .err-line { font:12px/1.4 var(--mono); color:var(--bad); overflow-wrap:anywhere; }
   .env .prev { font-size:11.5px; color:var(--muted); overflow-wrap:anywhere; }
+  .env .go { justify-self:start; }
+  /* Deploy dialog */
+  .dlg { border:1px solid var(--line); border-radius:16px; padding:0; width:min(620px, calc(100vw - 32px)); max-height:calc(100vh - 48px);
+    background:var(--panel); color:var(--fg); box-shadow:var(--shadow); }
+  .dlg::backdrop { background:rgba(15,14,23,.45); }
+  .dlg form { display:grid; gap:14px; padding:18px 20px; }
+  .dlg h2 { margin:0; font:800 18px var(--font); }
+  .dlg .field input { width:100%; min-width:0; }
+  .dlg #depCount { text-transform:none; letter-spacing:0; font-weight:500; }
+  .dlg .svcs { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:4px 10px; max-height:240px; overflow:auto;
+    padding:8px 10px; border:1px solid var(--line-2); border-radius:10px; }
+  .dlg .svcs label { display:flex; justify-content:flex-start; align-items:center; gap:7px; font:500 13px var(--font); text-transform:none; letter-spacing:0;
+    color:var(--fg-2); padding:3px 0; cursor:pointer; min-width:0; text-align:left; }
+  .dlg .svcs input { flex:none; width:auto; min-width:0; height:auto; margin:0; padding:0; accent-color:var(--brand); }
+  .dlg .svcs label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dlg .note { font-size:13px; border-radius:10px; padding:9px 12px; overflow-wrap:anywhere; }
+  .dlg .note.warn { background:var(--warn-bg); color:var(--warn); }
+  .dlg .note.bad { background:var(--bad-bg); color:var(--bad); }
+  .dlg .note.ok { background:var(--ok-bg); color:var(--ok); }
+  .dlg .note b { font-family:var(--mono); }
+  .dlg .acts { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
   /* Ticket lifecycle: numbers, time per stage, timeline */
   .lc { display:grid; gap:14px; padding:14px 16px; }
   .lc .nums { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; }
@@ -789,6 +810,21 @@
   </main>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<dialog class="dlg" id="depDlg" aria-labelledby="depTitle">
+  <form id="depForm" method="dialog">
+    <h2 id="depTitle">Deploy</h2>
+    <div id="depNotes" class="stack"></div>
+    <label class="field">Branch<input id="depBranch" list="depBranches" autocomplete="off" spellcheck="false" placeholder="Z10-41590-cart-total-int" required></label>
+    <datalist id="depBranches"></datalist>
+    <div class="field">Services <span id="depCount"></span><div class="svcs" id="depSvcs"></div></div>
+    <div id="depPlan" class="stack"></div>
+    <div class="acts">
+      <a class="btn" id="depGh" target="_blank" rel="noopener">Open in GitHub</a>
+      <button class="btn" type="button" id="depCancel">Cancel</button>
+      <button class="btn primary" type="submit" id="depGo">Check</button>
+    </div>
+  </form>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 const HOUR = 3600000, DAY = 24 * HOUR;
@@ -1328,7 +1364,11 @@ function render() {
 
 // Environments: the latest deploy on each (DEV4, DEV10, INT ...), what it built, who started it.
 const SERVICES = { api: 'API', v2: 'API v2', admin: 'Admin', wbst: 'Webstore', pgbld: 'Page builder', bstore: 'B Store', bstoregraphql: 'B Store GraphQL',
-  graphqlapi: 'GraphQL API', gateway: 'Gateway', portal: 'Portal', 'a-commerce': 'A-Commerce', reports: 'Reports', utility: 'Utility', db: 'DB' };
+  graphqlapi: 'GraphQL API', gateway: 'Gateway', portal: 'Portal', 'a-commerce': 'A-Commerce', reports: 'Reports', utility: 'Utility', db: 'DB',
+  customtable: 'Custom table API', cstm: 'Custom API', paymngr: 'Payment manager', shipping: 'Shipping manager', taxmanager: 'Tax manager',
+  spreedly: 'Spreedly', braintree: 'Braintree', fedex: 'FedEx', ups: 'UPS', usps: 'USPS', avatax: 'AvaTax', vertex: 'Vertex',
+  'cc-api': 'Connector API', 'cc-admin': 'Connector admin', azfunction: 'Azure functions', importexport: 'Import/export',
+  ieworker: 'Import/export worker', modulesapi: 'Modules API' };
 const svcName = c => SERVICES[c] || c;
 function renderEnvs(d) {
   const box = $('envs'); box.textContent = '';
@@ -1349,11 +1389,104 @@ function renderEnvs(d) {
       const day = list.filter(x => Date.now() - new Date(x.at) < DAY).length;
       if (list.length > 1) { const prev = el('div', 'prev', `${day} deploy${day === 1 ? '' : 's'} in 24h · before: ${personName(list[1].who)}, ${ago(list[1].at)}`); prev.title = list[1].branch || ''; card.append(prev); }
     } else card.append(el('div', 'prev', `None in the last ${d.deployDays || 3} days`));
+    if ((d.triggerEnvs || []).includes(env)) {
+      const go = el('button', 'btn sm go', 'Deploy…'); go.type = 'button'; go.title = `Start a ${env} deploy with your GitHub login`;
+      go.addEventListener('click', () => openDeploy(env)); card.append(go);
+    }
     box.append(card);
   });
   $('envs').closest('.panel').hidden = !envs.length;
 }
 
+
+// Deploy: pick a branch and services, Check (the branch is in every service's repo; who else is on the environment), then Start.
+// Runs the same "Trigger - Z10 <ENV>" workflow as GitHub's "Run workflow", as you.
+let dep = null;   // { env, form, plan }
+function depNote(box, cls, parts) { const n = el('div', 'note ' + cls); parts.forEach(p => n.append(typeof p === 'string' ? p : p)); box.append(n); }
+const mono = x => el('b', null, x);
+function depOthers(f, box) {
+  f.running.forEach(r => depNote(box, 'warn', ['A deploy is running now: ', mono(r.branch || 'branch not read yet'), ` by ${personName(r.who)}. Yours will start after it or replace it.`]));
+  if (f.recent) depNote(box, 'warn', [`${personName(f.recent.who)} deployed `, mono(f.recent.branch || '–'), ` ${ago(f.recent.at)}. Yours will replace it.`]);
+}
+function depReset() { if (!dep) return; dep.plan = null; $('depPlan').textContent = ''; $('depGo').textContent = 'Check'; $('depGo').disabled = !dep.form || !dep.form.canDeploy; }
+async function openDeploy(env) {
+  dep = { env, form: null, plan: null };
+  $('depTitle').textContent = `Deploy to ${env}`; $('depNotes').textContent = ''; $('depSvcs').textContent = ''; $('depPlan').textContent = '';
+  $('depCount').textContent = ''; $('depGo').textContent = 'Check'; $('depGo').disabled = true; $('depGh').hidden = true;
+  $('depCancel').textContent = 'Cancel';
+  const loading = el('div', 'hint'); loading.append(el('span', 'spinner'), ' Reading the workflow…'); $('depNotes').append(loading);
+  // Branch suggestions: your open PRs and your recent builds
+  const list = $('depBranches'); list.textContent = '';
+  const mine = state ? [...state.prs.filter(p => isMe(p.author)).map(p => p.head), ...state.builds.filter(r => r.mine && r.kind !== 'deploy').map(r => r.branch)] : [];
+  [...new Set(mine)].slice(0, 30).forEach(b => { const o = el('option'); o.value = b; list.append(o); });
+  $('depDlg').showModal();
+  let f;
+  try { const res = await fetch('/api/deploy-form?env=' + encodeURIComponent(env)); f = await res.json(); if (!res.ok) f.error = f.error || 'Could not read the workflow.'; }
+  catch (e) { f = { error: 'Hub is not running.' }; }
+  if (!dep || dep.env !== env) return;   // closed or another card meanwhile
+  $('depNotes').textContent = '';
+  if (f.error) { depNote($('depNotes'), 'bad', [f.error]); return; }
+  dep.form = f; $('depGh').href = f.url; $('depGh').hidden = false;
+  if (!f.canDeploy) depNote($('depNotes'), 'bad', [f.why]);
+  depOthers(f, $('depNotes'));
+  f.services.forEach(x => {
+    const lab = el('label'), cb = el('input'); cb.type = 'checkbox'; cb.value = x.code; cb.dataset.repo = x.repo;
+    const name = el('span', null, svcName(x.code)); lab.title = `${x.code}${x.repo ? ' · ' + x.repo : ''}`;
+    lab.append(cb, name); $('depSvcs').append(lab);
+  });
+  depCount(); depReset();
+  if (!$('depBranch').value) $('depBranch').focus();
+}
+function depPicked() { return [...$('depSvcs').querySelectorAll('input:checked')].map(c => c.value); }
+function depCount() { const n = depPicked().length; $('depCount').textContent = n ? `· ${n} picked` : ''; }
+$('depSvcs').addEventListener('change', () => { depCount(); depReset(); });
+// A branch from one of your PRs: tick the services built from that PR's repo
+$('depBranch').addEventListener('input', () => {
+  depReset();
+  const pr = state && state.prs.find(p => isMe(p.author) && p.head === $('depBranch').value.trim());
+  if (pr && !depPicked().length) { $('depSvcs').querySelectorAll('input').forEach(c => { if (c.dataset.repo === pr.repo) c.checked = true; }); depCount(); }
+});
+$('depCancel').addEventListener('click', () => $('depDlg').close());
+$('depDlg').addEventListener('close', () => { dep = null; });
+$('depForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!dep || !dep.form) return;
+  const box = $('depPlan'), go = $('depGo'), branch = $('depBranch').value.trim(), services = depPicked();
+  box.textContent = '';
+  if (!services.length) { depNote(box, 'bad', ['Pick at least one service.']); return; }
+  go.disabled = true;
+  if (!dep.plan) {   // step 1: Check
+    go.textContent = 'Checking…';
+    let p;
+    try {
+      const res = await fetch(`/api/deploy-check?env=${encodeURIComponent(dep.env)}&branch=${encodeURIComponent(branch)}&services=${encodeURIComponent(services.join(','))}`);
+      p = await res.json(); if (!res.ok) p.error = p.error || 'Could not check.';
+    } catch (err) { p = { error: 'Hub is not running.' }; }
+    if (!dep) return;
+    go.textContent = 'Check'; go.disabled = false;
+    if (p.error) { depNote(box, 'bad', [p.error]); return; }
+    if (p.missing.length) { depNote(box, 'bad', [mono(p.branch), ` is not a branch in ${p.missing.map(shortRepo).join(', ')}. Pick other services or push the branch first.`]); return; }
+    $('depNotes').querySelectorAll('.note.warn').forEach(n => n.remove());
+    depOthers(p, box);
+    depNote(box, 'ok', [`Deploy `, mono(p.branch), ` to ${p.env}: ${p.services.map(x => svcName(x.code)).join(', ')}. The branch is in every repo.`]);
+    dep.plan = p; go.textContent = `Start ${p.env} deploy`;
+    return;
+  }
+  // step 2: Start
+  go.textContent = 'Starting…';
+  let r;
+  try {
+    const res = await fetch('/api/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Magician-Hub': '1' },
+      body: JSON.stringify({ env: dep.env, branch, services }) });
+    r = await res.json(); if (!res.ok) r.error = r.error || 'Could not start it.';
+  } catch (err) { r = { error: 'Hub is not running.' }; }
+  if (!dep) return;
+  if (r.error) { go.textContent = `Start ${dep.env} deploy`; go.disabled = false; depNote(box, 'bad', [r.error]); return; }
+  box.textContent = '';
+  depNote(box, 'ok', [`${r.env} deploy of `, mono(r.branch), ' started. It shows on the card within a minute, and you get a popup when it finishes.']);
+  go.textContent = 'Started'; $('depCancel').textContent = 'Close';
+  setTimeout(load, 20000);
+});
 
 $('fixForm').addEventListener('submit', async e => {
   e.preventDefault();

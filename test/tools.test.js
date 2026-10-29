@@ -23,6 +23,37 @@ const apiPulls = [
   pull(2, 'Z10-2: Change with no reviewer', 'asha-rao-amla', []),
   pull(3, 'Z10-3: Waiting for review', 'chitra-iyer-amla', ['asha-rao-amla'], fiveDaysAgo)
 ];
+let devopsPush = false; const dispatched = [];   // write access to the DevOps repo, and the deploys "started"
+const DEV4_YML = `name: Trigger - Z10 DEV4
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant:
+        description: Tenant name
+        required: true
+        default: z10
+      environment:
+        description: Target environment (e.g., dev1, dev2, etc.)
+        default: dev4
+      branch:
+        description: Git branch to deploy
+        default: int
+      namespace:
+        default: znode
+      services:
+        description: Services to Build and Deploy
+        default: '{"admin": false, "api": false}'
+        type: string
+      all:
+        description: Deploy all services
+        default: false
+        type: boolean
+
+jobs:
+  trigger-build-deploy:
+    uses: ./.github/workflows/build-deploy.yaml
+`;
 const posted = [], worklogs = [], estimates = [];   // Teams posts and time logged, as the fake services received them
 let teamAnswer = [];                // assignees the fake Jira returns for the Team = Magicians search
 
@@ -112,6 +143,15 @@ globalThis.fetch = async (url, opts) => {
   }
   const u = new URL(url), p = u.pathname, q = u.searchParams.get('q') || '';
   let m;
+  // The DevOps repo: one DEV4 workflow, two services, write access as the test says; a dispatch is recorded, never sent
+  const DEVOPS = `/repos/${OWNER}/znode10-teams-devops`, b64 = x => ({ content: Buffer.from(x).toString('base64') });
+  if (p === `${DEVOPS}/actions/workflows`) return reply({ workflows: [{ id: 11, name: 'Trigger - Z10 DEV4', path: '.github/workflows/dev4_build_deploy.yml', state: 'active' },
+    { id: 12, name: 'Trigger - Z10 QA', path: '.github/workflows/qa_build_deploy.yml', state: 'active' }] });
+  if (p === DEVOPS) return reply({ default_branch: 'master', permissions: { push: devopsPush } });
+  if (p === `${DEVOPS}/contents/.github/services-config.json`) return reply(b64(JSON.stringify([{ service: 'admin', repository: `${OWNER}/${ADMIN}` }, { service: 'api', repository: `${OWNER}/${API}` }])));
+  if (p === `${DEVOPS}/contents/.github/workflows/dev4_build_deploy.yml`) return reply(b64(DEV4_YML));
+  if (p === `${DEVOPS}/actions/workflows/11/dispatches` && opts && opts.method === 'POST') { dispatched.push(JSON.parse(opts.body)); return reply(null, 204); }
+  if ((m = /^\/repos\/[^/]+\/([^/]+)\/branches\/(.+)$/.exec(p))) return m[1] === API && m[2] === 'Z10-1-change-int' ? reply({ name: m[2] }) : reply({ message: 'Branch not found' }, 404);
   if (/\/actions\/runs$/.test(p)) return reply({ workflow_runs: [] });
   if ((m = /\/repos\/[^/]+\/([^/]+)\/pulls$/.exec(p))) return reply(m[1] === API ? apiPulls : []);
   if (p === `/repos/${OWNER}/${API}/pulls/1/reviews`) return reply([{ user: { login: 'esha-singh-amla', type: 'User' }, state: 'APPROVED', submitted_at: new Date(Date.now() - 7 * 864e5).toISOString() }]);
@@ -383,6 +423,42 @@ test('branch delete: refused for protected branches, unknown branches and other 
   assert.match((await postJson('/api/branch-delete', { repo: 'not-ours', branch: 'Z10-1-x', sha: 'x' })).body.error, /can't be deleted/);
   assert.match((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'Z10-1-change-int', sha: 'x' })).body.error, /not in the stale list/);
   assert.equal((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'Z10-1-change-int', sha: 'x' }, {})).status, 403);   // no hub header
+});
+
+test('deploy: the workflow inputs and their defaults are read from the workflow file', () => {
+  const i = hub.dispatchInputs(DEV4_YML);
+  assert.deepEqual(Object.keys(i), ['tenant', 'environment', 'branch', 'namespace', 'services', 'all']);
+  assert.equal(i.tenant.default, 'z10'); assert.equal(i.namespace.default, 'znode');
+  assert.deepEqual(JSON.parse(i.services.default), { admin: false, api: false });
+  assert.equal(i.all.type, 'boolean');
+});
+
+test('deploy: needs write access, DEV4/DEV10 only, a real branch, known services, and the hub header', async () => {
+  let f = await api('/api/deploy-form', { env: 'dev4' });
+  assert.equal(f.body.canDeploy, false); assert.match(f.body.why, /write access/);
+  assert.match((await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: ['api'] })).body.error, /write access/);
+  devopsPush = true;   // access given: the next open sees it
+  f = await api('/api/deploy-form', { env: 'DEV4' });
+  assert.equal(f.body.canDeploy, true);
+  assert.deepEqual(f.body.services, [{ code: 'admin', repo: ADMIN }, { code: 'api', repo: API }]);
+  assert.match((await api('/api/deploy-form', { env: 'QA' })).body.error, /DEV4 and DEV10 only/);
+  const c = await api('/api/deploy-check', { env: 'DEV4', branch: 'Z10-1-change-int', services: 'admin,api' });
+  assert.deepEqual(c.body.missing, [ADMIN]);   // the branch is in the API repo only
+  assert.match((await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: ['admin', 'api'] })).body.error, /not a branch in admin/);
+  assert.match((await postJson('/api/deploy', { env: 'DEV4', branch: 'x; rm -rf', services: ['api'] })).body.error, /branch name/);
+  assert.match((await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: ['db'] })).body.error, /not in the workflow/);
+  assert.match((await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: [] })).body.error, /at least one/);
+  assert.equal((await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: ['api'] }, {})).status, 403);   // no hub header
+  assert.equal(dispatched.length, 0);
+});
+
+test('deploy: starts the workflow with its own defaults, only the picked services, never "all"; no double start', async () => {
+  const r = await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: ['api'] });
+  assert.equal(r.status, 200); assert.equal(r.body.ok, true);
+  assert.deepEqual(dispatched, [{ ref: 'master', inputs: { tenant: 'z10', environment: 'dev4', branch: 'Z10-1-change-int', namespace: 'znode',
+    services: '{"admin":false,"api":true}', all: 'false' } }]);
+  assert.match((await postJson('/api/deploy', { env: 'DEV4', branch: 'Z10-1-change-int', services: ['api'] })).body.error, /less than 2 minutes ago/);
+  assert.equal(dispatched.length, 1);
 });
 
 test('Friday reminder: once, on Friday at 16:00, when the week is under 40h', async () => {
