@@ -500,6 +500,9 @@
       <label class="field only-builds">Status<select id="fStatus">
         <option value="">Any</option><option value="failure">Failed</option><option value="running">Running</option><option value="success">Passed</option>
       </select></label>
+      <label class="field only-builds">Show<select id="fKind">
+        <option value="">Builds and deploys</option><option value="checks">Also PR checks</option><option value="only-checks">Only PR checks</option>
+      </select></label>
       <span class="sep only-prs"></span>
       <label class="field only-prs">Into<select id="fBase"><option value="">Any branch</option></select></label>
       <label class="field only-prs">Waiting<select id="fAge">
@@ -945,8 +948,8 @@ if (store.get('hub.lastEvent') === null) store.set('hub.lastEvent', new Date().t
 renderAlertBtn();
 
 // Filters: person matches a build by commit email and a PR by GitHub login (first.last@ -> first-last-...).
-const FILTERS = ['fWho', 'fRepo', 'fStatus', 'fText', 'fBase', 'fAge', 'fRev', 'fDraft'];
-const FIXED = ['fStatus', 'fText', 'fAge', 'fRev', 'fDraft'];   // options known up front; restore on load
+const FILTERS = ['fWho', 'fRepo', 'fStatus', 'fKind', 'fText', 'fBase', 'fAge', 'fRev', 'fDraft'];
+const FIXED = ['fStatus', 'fKind', 'fText', 'fAge', 'fRev', 'fDraft'];   // options known up front; restore on load
 const nameOf = em => em.split('@')[0].replace(/\./g, '-');
 let state = null;
 
@@ -1018,7 +1021,12 @@ function buildRow(body, r) {
   const tr = body.insertRow();
   cell(tr, statePill(r), 'fit');
   const b = el('div', 'build'), sub = el('div', 'sub');
-  sub.append(repoChip(r.repo), el('span', null, r.workflow));
+  if (r.kind === 'deploy') {
+    sub.append(el('span', 'chip', r.env));
+    r.services.slice(0, 5).forEach(x => { const c = el('span', 'chip', svcName(x.code)); c.title = x.repo; sub.append(c); });
+    if (r.services.length > 5) sub.append(el('span', 'chip', `+${r.services.length - 5}`));
+    sub.append(el('span', null, 'deploy'));
+  } else sub.append(repoChip(r.repo), el('span', null, r.kind === 'check' ? `${r.workflow} · PR check` : r.workflow));
   b.append(link(r.branch, r.url, 'br-name'), sub);
   if (r.reason) b.append(el('div', 'reason', r.reason));
   cell(tr, b); cell(tr, who(r.author), 'fit');
@@ -1054,9 +1062,10 @@ function fillSelect(id, values, label) {
 function filtered(d) {
   const whoV = $('fWho').value, repo = $('fRepo').value, status = $('fStatus').value, text = $('fText').value.trim().toLowerCase();
   const person = whoV === 'me' ? d.email : whoV;
-  const runs = d.runs.filter(r =>
-    (!person || r.author === person) && (!repo || r.repo === repo) && (!status || runState(r) === status) &&
-    (!text || (r.branch + ' ' + r.workflow).toLowerCase().includes(text)));
+  const kind = $('fKind').value;
+  const runs = d.allBuilds.filter(r => (kind === 'only-checks' ? r.kind === 'check' : kind === 'checks' || r.kind !== 'check') &&
+    (!person || r.author === person) && (!repo || r.repo === repo || (r.services || []).some(x => x.repo === repo)) && (!status || runState(r) === status) &&
+    (!text || [r.branch, r.workflow, r.env || '', ...(r.services || []).map(x => svcName(x.code))].join(' ').toLowerCase().includes(text)));
   const base = $('fBase').value, days = Number($('fAge').value), rev = $('fRev').value, draft = $('fDraft').value;
   const prs = d.prs.filter(p =>
     (!person || (whoV === 'me' ? isMe(p.author) : p.author.toLowerCase().startsWith(nameOf(person)))) &&
@@ -1096,10 +1105,22 @@ $('prCsv').addEventListener('click', () => {
 // Who is looking: the company sign-in (hosted), the name picked here, or your Git email (local).
 function viewer() { return (state && state.signedIn && state.viewer) || store.get('hub.me') || (state && state.viewer) || ''; }
 const isMe = login => !!viewer() && login.toLowerCase().startsWith(nameOf(viewer()));
+// Builds: a deploy rebuilds services (Admin, Webstore, API ...) from a branch, so each team deploy is a build row. GitHub runs
+// that only check a PR (review bot, docs lint, package updates) are PR checks, shown only when asked for.
+function allBuilds(d) {
+  const isCheck = new RegExp(d.checkWorkflows || 'code review|spectral|lint|nuget', 'i');
+  d.runs.forEach(r => { r.kind = isCheck.test(r.workflow) ? 'check' : 'build'; });
+  const deployRows = (d.teamDeploys || []).map(x => ({ kind: 'deploy', id: 'd' + x.id, repo: (x.services[0] || {}).repo || 'deploy', services: x.services, env: x.env,
+    branch: x.branch || '(branch not read yet)', workflow: `Deploy to ${x.env}`, status: x.status, conclusion: x.conclusion, url: x.url, updated: x.updated || x.at,
+    author: x.who, reason: x.failed || '' }));
+  return [...d.runs, ...deployRows].sort((a, b) => b.updated.localeCompare(a.updated));
+}
 function personalise(d) {
   const v = viewer();
   d.email = v;
-  d.runs.forEach(r => { r.mine = !!v && r.author === v; });
+  d.allBuilds = allBuilds(d);
+  d.builds = d.allBuilds.filter(r => r.kind !== 'check');   // what Overview and the counts use
+  d.allBuilds.forEach(r => { r.mine = !!v && r.author === v; });
   d.reviewQueue = d.requests.filter(p => p.reviewers.some(isMe));
   d.changesRequested = d.prs.filter(p => isMe(p.author) && p.review === 'changes' && !whyParked(p));
   const me = $('fMe');
@@ -1182,10 +1203,10 @@ function listItem(box, lead, title, sub, right, href) {
 
 function renderOverview(d, activePrs) {
   const lastDay = r => Date.now() - new Date(r.updated) < DAY;
-  const myFails = d.runs.filter(r => r.mine && r.conclusion === 'failure' && lastDay(r));
+  const myFails = d.builds.filter(r => r.mine && r.conclusion === 'failure' && lastDay(r));
   const myPrs = activePrs.filter(p => isMe(p.author));
   const noReviewer = myPrs.filter(p => p.review === 'none'), approved = myPrs.filter(p => p.review === 'approved');
-  const teamDay = d.runs.filter(lastDay), teamFailed = teamDay.filter(r => r.conclusion === 'failure').length;
+  const teamDay = d.builds.filter(lastDay), teamFailed = teamDay.filter(r => r.conclusion === 'failure').length;
   const count = (list, key) => list.filter(p => p.review === key).length;
   const mineSub = ['approved', 'changes', 'waiting', 'commented', 'none'].filter(k => count(myPrs, k))
     .map(k => count(myPrs, k) + ' ' + REVIEW[k][0].toLowerCase()).join(' · ');
@@ -1215,8 +1236,9 @@ function renderOverview(d, activePrs) {
   if (!attnCount) emptyBox(attn, "You're all clear", 'Nothing needs you right now.');
 
   const recent = $('recent'); recent.textContent = '';
-  d.runs.slice(0, 6).forEach(r => listItem(recent, avatar(r.author), shortRepo(r.repo) + ' · ' + r.branch, personName(r.author) + ' · ' + r.workflow, statePill(r)));
-  if (!d.runs.length) emptyBox(recent, 'No builds yet');
+  d.builds.slice(0, 6).forEach(r => listItem(recent, avatar(r.author), r.kind === 'deploy' ? `${r.env} · ${r.branch}` : shortRepo(r.repo) + ' · ' + r.branch,
+    personName(r.author) + ' · ' + (r.kind === 'deploy' ? r.services.map(x => svcName(x.code)).join(', ') || 'deploy' : r.workflow), statePill(r)));
+  if (!d.builds.length) emptyBox(recent, 'No builds yet');
 
   // My open PRs: what needs me first (changes requested, approved and ready to merge, no reviewer, waiting).
   const mine = $('myPrs'); mine.textContent = '';
@@ -1268,15 +1290,15 @@ function render() {
   renderLinks(d);
   renderOverview(d, allActive);
   $('nb-prs').textContent = allActive.length;
-  const failedTeam = d.runs.filter(r => r.conclusion === 'failure').length;
-  $('nb-builds').textContent = failedTeam || d.runs.length; $('nb-builds').classList.toggle('bad', failedTeam > 0);
-  $('nb-builds').title = failedTeam ? failedTeam + ' failed' : d.runs.length + ' builds';
+  const failedTeam = d.builds.filter(r => r.conclusion === 'failure').length;
+  $('nb-builds').textContent = failedTeam || d.builds.length; $('nb-builds').classList.toggle('bad', failedTeam > 0);
+  $('nb-builds').title = failedTeam ? failedTeam + ' failed' : d.builds.length + ' builds';
 
   const f = filtered(d);
   const openPrs = f.prs.filter(p => !whyParked(p)), parked = f.prs.filter(p => whyParked(p));
   const active = FILTERS.some(id => $(id).value.trim());
   $('fCount').textContent = !active ? '' : view === 'builds'
-    ? f.runs.length + ' of ' + d.runs.length + ' builds' : openPrs.length + ' of ' + allActive.length + ' PRs';
+    ? f.runs.length + ' of ' + d.allBuilds.length + ' builds' : openPrs.length + ' of ' + allActive.length + ' PRs';
 
   const prBody = $('prRows');
   if (!openPrs.length) emptyRow(prBody, active ? 'No PRs match these filters' : 'No open team PRs', active ? 'Try clearing a filter.' : '', 5);
@@ -1348,7 +1370,7 @@ $('fixForm').addEventListener('submit', async e => {
   } catch (err) { msg.className = 'hint err-t'; msg.textContent = 'Hub is not running.'; return; }
   // Builds whose branch carries the ticket key (Z10-123, z10_123 ...), from the hub's 14 days of team builds.
   const keyRe = new RegExp(`(^|[^0-9a-z])${d.key.toLowerCase().replace(/-/g, '[-_ ]')}([^0-9]|$)`);
-  const builds = state ? state.runs.filter(r => keyRe.test(r.branch.toLowerCase())) : [];
+  const builds = state ? (state.builds || state.runs).filter(r => keyRe.test(r.branch.toLowerCase())) : [];
   if (!d.rows.length && !d.pulls.length && !builds.length && !d.jira) { msg.textContent = 'Nothing found for ' + d.key + '.'; return; }
   msg.textContent = '';
   $('fixKeyLabel').textContent = d.jira ? `${d.key} · ${d.jira.summary}` : d.key;

@@ -1287,6 +1287,8 @@ const server = http.createServer(async (req, res) => {
       teamInfo, canLogTime: !HOSTED && JIRA_MODE === 'api' && !jiraNeedsToken ? jiraAuth.email : null,   // whose time a "Log" writes
       deployEnvs: cfg.deployEnvs || [], deployDays: cfg.deployCardDays || 3, buildDays: cfg.buildDays || 14,
       deploys: [...deploys.values()].filter(x => Date.now() - new Date(x.at) < (cfg.deployCardDays || 3) * 86400000).sort((a, b) => b.at.localeCompare(a.at)),
+      teamDeploys: [...deploys.values()].filter(x => team.has(x.who) && x.at >= buildSince()).sort((a, b) => b.at.localeCompare(a.at)),
+      checkWorkflows: cfg.checkWorkflows || 'code review|spectral|lint|nuget|sonar|label|jira|stale|dependabot|codeql',
       lastPoll, lastError, runs: list, prs, requests, events });
   }
   const q = name => (url.searchParams.get(name) || '').trim();
