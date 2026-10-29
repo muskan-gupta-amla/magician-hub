@@ -126,12 +126,33 @@
   .tag.ok { background:var(--ok-bg); color:var(--ok); }
   .tag.bad { background:var(--bad-bg); color:var(--bad); }
   .review { display:flex; align-items:center; gap:8px; }
+  /* Team PRs: one row per PR. Review = status + each reviewer's mark; Next = one person and what they do */
+  .rv { display:grid; gap:5px; justify-items:start; }
+  .marks { display:flex; flex-wrap:wrap; gap:3px 10px; font-size:12.5px; color:var(--fg-2); max-width:260px; }
+  .mark { white-space:nowrap; } .mark b { margin-right:3px; }
+  .mark.ok b { color:var(--ok); } .mark.bad b { color:var(--bad); } .mark.wait b { color:var(--warn); } .mark.cm b { color:var(--info); }
+  .nx { display:grid; gap:2px; }
+  .nx .what { font-size:12px; color:var(--muted); padding-left:34px; }
+  .nx.me .what { color:var(--brand); font-weight:700; }
+  .pr-t .by { font-size:12px; color:var(--muted); margin-top:4px; }
+  .prtabs { padding:12px 16px; border-bottom:1px solid var(--line-2); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .seg button .n { font:600 11px var(--mono); color:var(--muted); margin-left:5px; }
+  .seg button[aria-pressed="true"] .n { color:var(--brand); }
+  .iconbtn { all:unset; cursor:pointer; width:28px; height:28px; display:grid; place-items:center; border-radius:8px; color:var(--muted); }
+  .iconbtn:hover { background:var(--panel-2); color:var(--brand); } .iconbtn:focus-visible { outline:2px solid var(--brand); }
+  .iconbtn .i { width:16px; height:16px; }
+  .nx.me .what { color:var(--brand); font-weight:700; }
   .health { display:grid; }
   .health button { all:unset; cursor:pointer; display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line-2); }
   .health button:last-child { border-bottom:0; }
   .health button:hover { background:var(--panel-2); }
   .health button:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
   .health .cnt { margin-left:auto; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; }
+  .health .lbl { font-size:13.5px; font-weight:600; color:var(--fg-2); }
+  .health .dot { width:10px; height:10px; border-radius:3px; flex:none; }
+  .hbar { display:flex; gap:3px; height:10px; margin:14px 16px 6px; border-radius:6px; overflow:hidden; }
+  .hbar span { min-width:6px; }
+  .seg-ok { background:var(--ok); } .seg-bad { background:var(--bad); } .seg-warn { background:var(--warn); } .seg-off { background:var(--line); }
   .tag.info { background:var(--info-bg); color:var(--info); }
   .tag.warn { background:var(--warn-bg); color:var(--warn); }
   .emptyst { padding:30px 16px; text-align:center; color:var(--muted); }
@@ -150,8 +171,9 @@
   tbody tr:not(.empty):hover td { background:var(--panel-2); }
   .pr-t { min-width:220px; }
   .pr-t .sub { flex-wrap:wrap; }
+  .pr-t .sub .chip { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; }   /* full name on hover */
   td .muted { white-space:nowrap; }
-  .pr-t a { font-weight:700; color:var(--fg); text-decoration:none; }
+  .pr-t a { font-weight:700; color:var(--fg); text-decoration:none; overflow-wrap:anywhere; }   /* long branch-style titles wrap */
   .pr-t a:hover { color:var(--brand); text-decoration:underline; }
   .pr-t .sub { display:flex; gap:6px; align-items:center; margin-top:3px; font-size:12px; color:var(--muted); }
   .chip { display:inline-flex; align-items:center; font:600 11.5px var(--mono); padding:2px 7px; border-radius:6px; background:var(--panel-2);
@@ -366,19 +388,55 @@
   .brief .pt .tag { width:30px; height:30px; border-radius:9px; }
   .brief .pt b { color:var(--fg); font-weight:700; }
   /* Builds: environments and who is working on what */
-  .envs { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; padding:14px 16px; }
-  .env { border:1px solid var(--line); border-radius:14px; padding:12px 14px; display:grid; gap:8px; background:var(--panel); align-content:start; }
-  .env.bad { border-color:color-mix(in srgb, var(--bad) 45%, transparent); }
-  .env .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .env .top b { font:800 16px var(--font); letter-spacing:.02em; }
-  .env .top .pill { flex:none; }
-  .env .branch { font:600 13px var(--mono); color:var(--brand); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }   /* full name on hover */
+  .envs { display:grid; }
+  .env { display:grid; grid-template-columns:150px minmax(0,2.2fr) minmax(0,1.1fr) minmax(0,1.2fr) 96px; gap:18px; align-items:center;
+    padding:14px 18px; border-bottom:1px solid var(--line-2); }
+  .env:last-child { border-bottom:0; }
+  .env:hover { background:var(--panel-2); }
+  .env.bad { box-shadow:inset 3px 0 0 var(--bad); }
+  .env .name { display:grid; gap:6px; justify-items:start; }
+  .env .name b { font:800 16px var(--font); letter-spacing:.02em; }
+  .env .what { display:grid; gap:7px; min-width:0; }
+  .env .branch { font:600 13.5px var(--mono); color:var(--brand); overflow-wrap:anywhere; }
   .env .svc { display:flex; flex-wrap:wrap; gap:4px; }
-  .env .by { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--fg-2); }
-  .env .by .av { width:20px; height:20px; font-size:9px; }
+  .env .by { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--fg-2); min-width:0; }
+  .env .by .t { display:grid; line-height:1.35; min-width:0; } .env .by .t span { font-size:12px; color:var(--muted); }
   .env .err-line { font:12px/1.4 var(--mono); color:var(--bad); overflow-wrap:anywhere; }
-  .env .prev { font-size:11.5px; color:var(--muted); overflow-wrap:anywhere; }
-  .env .go { justify-self:start; }
+  .env .prev { font-size:12px; color:var(--muted); line-height:1.45; }
+  .env .prev b { color:var(--fg-2); font-weight:700; }
+  .env .go { justify-self:end; }
+  @media (max-width: 900px) {   /* tablet and phone: environment and status on top, the rest stacked */
+    .env { grid-template-columns:minmax(0,1fr) auto; gap:10px 12px; }
+    .env .name { grid-column:1; display:flex; align-items:center; gap:10px; }
+    .env .go { grid-column:2; grid-row:1; }
+    .env .what, .env .by, .env .prev { grid-column:1 / -1; }
+  }
+  /* Builds per day: one slim bar per day with its count on top; passed (green) under failed (red), others grey */
+  .bdays { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:8px; height:190px; padding:18px 20px 10px;
+    background:linear-gradient(var(--line-2), var(--line-2)) 0 calc(100% - 30px) / 100% 1px no-repeat; }
+  .bday { display:grid; grid-template-rows:1fr auto; gap:8px; min-width:0; justify-items:center; }
+  .bday .bar { display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:4px; width:100%; height:100%; }
+  .bday .n { font:700 12px var(--font); color:var(--fg-2); font-variant-numeric:tabular-nums; }
+  .bday .col { display:flex; flex-direction:column-reverse; width:min(100%, 34px); border-radius:6px 6px 3px 3px; overflow:hidden; }
+  .bday .col span { display:block; min-height:3px; }
+  .bday .ok { background:var(--ok); } .bday .bad { background:var(--bad); } .bday .oth { background:var(--line); }
+  .bday .d { font:600 11px var(--font); color:var(--muted); white-space:nowrap; }
+  .bday.today .d { color:var(--brand); font-weight:800; }
+  .bday:hover .col { filter:brightness(1.1); }
+  .bday .d .s { display:none; }
+  @media (max-width: 640px) { .bday .d .l { display:none; } .bday .d .s { display:inline; } .bdays { gap:4px; padding:14px 10px 8px; } .bday .n { font-size:10.5px; } }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+  .panel-h:has(.legend) { flex-wrap:wrap; } .panel-h:has(.legend) h2 { white-space:nowrap; }   /* legend drops under the title on a phone */
+  .legend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  @media (max-width: 640px) {   /* Team PRs on a phone: one card per PR, no sideways scroll */
+    table:has(> .cardrows) thead { display:none; }
+    .cardrows tr:not(.empty) { display:grid; grid-template-columns:1fr auto; gap:8px 12px; padding:12px 14px; border-top:1px solid var(--line-2); }
+    .cardrows tr:not(.empty) td { display:block; padding:0; border:0; width:auto; white-space:normal; }
+    .cardrows tr:not(.empty) td:first-child { grid-column:1 / -1; }
+    .cardrows tr:not(.empty) td:nth-child(2), .cardrows tr:not(.empty) td:nth-child(3) { grid-column:1 / -1; }
+    .cardrows .nx .what { padding-left:34px; }
+    .cardrows td[data-label]::before { content:attr(data-label); display:block; margin-bottom:5px; font:700 10.5px var(--font); letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+  }
   /* Deploy dialog */
   .dlg { border:1px solid var(--line); border-radius:16px; padding:0; width:min(620px, calc(100vw - 32px)); max-height:calc(100vh - 48px);
     background:var(--panel); color:var(--fg); box-shadow:var(--shadow); }
@@ -468,7 +526,7 @@
     .field { flex:1 1 140px; }
     .toolbar .sep { display:none; }
   }
-  @media (max-width:1200px) { td .who span:last-child { display:none; } }   /* avatar only; name on hover */
+  @media (max-width:1200px) { td.fit > .who span:last-child { display:none; } }   /* avatar-only columns (Builds: who); name on hover. Team PRs always show names */
   @media (max-width:640px) { th, td { padding:10px 8px; } .build, .pr-t { min-width:160px; } .pill { padding:3px 8px; } }
 </style>
 </head>
@@ -529,9 +587,8 @@
       <label class="field only-prs">Waiting<select id="fAge">
         <option value="">Any time</option><option value="1">Over 1 day</option><option value="3">Over 3 days</option><option value="7">Over 7 days</option>
       </select></label>
-      <label class="field only-prs">Review<select id="fRev">
-        <option value="">Any</option><option value="approved">Approved</option><option value="changes">Changes requested</option>
-        <option value="waiting">Awaiting review</option><option value="none">No reviewer</option><option value="me">Waiting on me</option>
+      <label class="field only-prs">Next step<select id="fRev">
+        <option value="">Anyone</option><option value="next-me">Waiting on me</option><option value="me">My review asked</option>
       </select></label>
       <label class="field only-prs">Drafts<select id="fDraft">
         <option value="">Show</option><option value="hide">Hide</option><option value="only">Only drafts</option>
@@ -632,16 +689,24 @@
     <!-- Team PRs -->
     <section data-view="prs" class="stack" hidden>
       <div class="panel">
+        <div class="prtabs">
+          <div class="seg" id="prTabs" role="group" aria-label="Show PRs that are">
+            <button type="button" data-g="">All<span class="n"></span></button><button type="button" data-g="merge">Ready to merge<span class="n"></span></button>
+            <button type="button" data-g="changes">Changes requested<span class="n"></span></button><button type="button" data-g="review">In review<span class="n"></span></button>
+            <button type="button" data-g="none">No reviewer<span class="n"></span></button>
+          </div>
+          <span class="muted">Sorted by what each PR needs, oldest first</span>
+        </div>
         <div class="tbl"><table>
-          <thead><tr><th>Pull request</th><th>By</th><th>Waiting</th><th>Review</th><th></th></tr></thead>
-          <tbody id="prRows"><tr class="empty"><td colspan="5" class="emptyst"><span class="spinner lg"></span>Loading…</td></tr></tbody>
+          <thead><tr><th>Pull request</th><th>Review</th><th>Next step</th><th>Assigned to <span class="muted">(Jira)</span></th><th>Age</th><th></th></tr></thead>
+          <tbody id="prRows" class="cardrows"><tr class="empty"><td colspan="6" class="emptyst"><span class="spinner lg"></span>Loading…</td></tr></tbody>
         </table></div>
       </div>
       <details class="parked" id="parked">
         <summary><svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>Parked <span class="badge" id="parkedCount">0</span>
           <span class="muted">Drafts, POCs, no ticket, inactive, hidden</span></summary>
         <div class="tbl"><table>
-          <thead><tr><th>Pull request</th><th>By</th><th>Waiting</th><th>Why parked</th><th></th></tr></thead>
+          <thead><tr><th>Pull request</th><th>Why parked</th><th>Age</th><th></th></tr></thead>
           <tbody id="parkedRows"></tbody>
         </table></div>
       </details>
@@ -652,6 +717,10 @@
       <div class="panel">
         <div class="panel-h"><h2>Environments</h2><span class="muted">latest deploy on each: branch, services, who</span></div>
         <div class="envs" id="envs"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Builds per day</h2><div class="legend"><span id="bdSum"></span><span><i class="seg-ok"></i>Passed</span><span><i class="seg-bad"></i>Failed</span><span><i class="seg-off"></i>Other</span></div></div>
+        <div class="bdays" id="bdChart" role="img"></div>
       </div>
       <div class="panel">
         <div class="tbl"><table>
@@ -854,6 +923,7 @@ const ICONS = {
   check: 'M20 6 9 17l-5-5', x: 'M18 6 6 18M6 6l12 12', minus: 'M5 12h14',
   fail: 'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20M15 9l-6 6M9 9l6 6',
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12ZM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6',
+  eyeOff: 'M2 2l20 20M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
   msg: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z',
   user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8',
   merge: 'M18 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6M6 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6M6 21V9a9 9 0 0 0 9 9',
@@ -1006,6 +1076,38 @@ const whyParked = p => hiddenPrs.has(p.url) ? 'Hidden by you' : p.parked;
 const REVIEW = { approved: ['Approved', 's-ok'], changes: ['Changes requested', 's-bad'], commented: ['Commented', 's-run'],
   waiting: ['Awaiting review', 's-warn'], none: ['No reviewer', 's-off'] };
 function reviewPill(p) { const [t, c] = REVIEW[p.review] || REVIEW.none; return pill(t, c); }
+// Review: the status, then each reviewer's mark: ✓ approved, ✕ asked for changes, ● commented, ○ still to review
+function reviewDetail(p) {
+  const box = el('div', 'rv'), marks = el('div', 'marks'), by = st => (p.reviewedBy || []).filter(r => r.state === st).map(r => r.login);
+  const done = new Set((p.reviewedBy || []).map(r => r.login));
+  const all = [...by('approved').map(l => ['ok', '✓', l, 'approved']), ...by('changes').map(l => ['bad', '✕', l, 'asked for changes']),
+    ...by('commented').filter(l => !p.reviewers.includes(l)).map(l => ['cm', '●', l, 'commented']),
+    ...p.reviewers.filter(l => !by('approved').includes(l) && !by('changes').includes(l)).map(l => ['wait', '○', l, done.has(l) ? 'asked to look again' : 'not reviewed yet'])];
+  all.forEach(([cls, sym, l, what]) => { const m = el('span', 'mark ' + cls); m.append(el('b', null, sym), personName(l)); m.title = `${personName(l)}: ${what}`; marks.append(m); });
+  box.append(reviewPill(p)); if (all.length) box.append(marks);
+  return box;
+}
+// Next step: one line, who and what. The group decides the tab and the order.
+const NEXT = { draft: 'Finish the draft', review: 'Review', 're-review': 'Re-review the fixes', merge: 'Merge', assign: 'Merge',
+  reply: 'Reply to comments', fix: 'Fix the changes', ask: 'Add a reviewer' };
+const GROUP = { merge: 'merge', assign: 'merge', fix: 'changes', 're-review': 'changes', review: 'review', reply: 'review', ask: 'none', draft: 'none' };
+const GROUP_ORDER = ['merge', 'changes', 'review', 'none'];
+const GROUP_LABEL = { merge: ['Ready to merge', 'ok'], changes: ['Changes requested', 'bad'], review: ['In review', 'warn'], none: ['No reviewer', 'off'] };
+const prGroup = p => GROUP[p.next ? p.next.what : 'ask'] || 'none';
+function nextCell(p) {
+  if (!p.next) return '';
+  const mine = p.next.who.some(isMe), box = el('div', 'nx' + (mine ? ' me' : '')), rest = p.next.who.slice(2);
+  p.next.who.slice(0, 2).forEach(l => box.append(who(l)));   // two people at most (the two architects for a merge), then +n
+  if (rest.length) { const more = el('span', 'muted', `+${rest.length} more`); more.title = rest.map(personName).join(', '); box.append(more); }
+  box.append(el('span', 'what', (mine ? 'Your turn: ' + NEXT[p.next.what].toLowerCase() : NEXT[p.next.what]) + (p.next.who.length > 1 && !mine ? ' (any one)' : '')));
+  return box;
+}
+const mergerNames = p => p.next && p.next.what === 'merge' && !p.next.who.some(isMe) ? p.next.who.map(personName).join(' or ') : 'an architect';
+function assignedCell(p) {
+  const tk = state && jiraFor(p);
+  if (!tk || !tk.assignee) return el('span', 'muted', '–');
+  const w = who(tk.assignee); w.title = `${tk.key} is assigned to ${personName(tk.assignee)} in Jira (${tk.status})`; return w;
+}
 
 // Jira: ticket keys in PR titles and branches, linked to their Jira status.
 const JIRA_CAT = { new: 's-off', indeterminate: 's-run', done: 's-ok' };
@@ -1048,10 +1150,13 @@ function prTitle(p) {
   const box = el('div', 'pr-t');
   box.append(link(p.title, p.url));
   const sub = el('div', 'sub'); sub.append(repoChip(p.repo), el('span', null, '#' + p.number + ' →'), el('span', 'chip', p.base));
+  sub.lastChild.title = p.base;
   if (p.draft) sub.append(pill('Draft', 's-brand'));
   const checks = checksOf(p); if (checks) sub.append(checks);
   const ticket = state && jiraFor(p); if (ticket) sub.append(jiraPill(ticket, !p.state || p.state === 'open'));
-  box.append(sub); return box;
+  box.append(sub);
+  if (p.author && !p.state) box.append(el('div', 'by', 'by ' + personName(p.author)));   // Team PRs (lookups show their own)
+  return box;
 }
 function buildRow(body, r) {
   const tr = body.insertRow();
@@ -1081,8 +1186,13 @@ function renderLinks(d) {
 }
 function prRow(body, p) {
   const tr = body.insertRow();
-  cell(tr, prTitle(p)); cell(tr, who(p.author), 'fit'); cell(tr, waited(p.created), 'fit');
+  cell(tr, prTitle(p));
   return tr;
+}
+function hideButton(url, hidden) {
+  const b = toggleButton(url, ''); b.className = 'iconbtn'; b.textContent = '';
+  b.append(icon(hidden ? 'eye' : 'eyeOff')); b.title = b.ariaLabel = hidden ? 'Show in the list again' : 'Hide from the list';
+  return b;
 }
 
 function fillSelect(id, values, label) {
@@ -1108,7 +1218,7 @@ function filtered(d) {
     (!repo || p.repo === repo) && (!text || (p.title + ' ' + p.repo + ' #' + p.number).toLowerCase().includes(text)) &&
     (!base || p.base === base) &&
     (!days || Date.now() - new Date(p.created) > days * DAY) &&
-    (!rev || (rev === 'me' ? p.reviewers.some(isMe) : p.review === rev)) &&
+    (!rev || (rev === 'me' ? p.reviewers.some(isMe) : rev === 'next-me' ? !!p.next && p.next.who.some(isMe) : p.review === rev)) &&
     (!draft || (draft === 'hide' ? !p.draft : p.draft)));
   return { runs, prs };
 }
@@ -1119,18 +1229,22 @@ function prExportRows() {
   return prs.map(p => {
     const key = keysOf(`${p.title} ${p.head}`)[0] || '', t = key && state.jiraKeys[key];
     return { repo: shortRepo(p.repo), number: p.number, title: p.title, author: personName(p.author), into: p.base, branch: p.head,
-      review: (REVIEW[p.review] || REVIEW.none)[0], reviewers: p.reviewers.map(personName).join('; '), jira: key ? `${key}${t ? ' ' + t.status : ''}` : '',
+      review: (REVIEW[p.review] || REVIEW.none)[0], reviewers: p.reviewers.map(personName).join('; '),
+      approvedBy: (p.reviewedBy || []).filter(r => r.state === 'approved').map(r => personName(r.login)).join('; '),
+      changesBy: (p.reviewedBy || []).filter(r => r.state === 'changes').map(r => personName(r.login)).join('; '),
+      assigned: t && t.assignee ? personName(t.assignee) : '',
+      nextWho: p.next ? p.next.who.map(personName).join('; ') : '', nextStep: p.next ? NEXT[p.next.what] : '', jira: key ? `${key}${t ? ' ' + t.status : ''}` : '',
       created: new Date(p.created).toLocaleDateString('en-CA'), waiting: days(p), parked: whyParked(p) || '', url: p.url };
   });
 }
 $('prCopy').addEventListener('click', e => {
   const rows = prExportRows();
-  const text = [`Team PRs (${rows.length})`, ...rows.map(r => `• ${r.repo} #${r.number} ${r.title} · ${r.author} · ${r.review} · ${r.waiting}d${r.parked ? ' · ' + r.parked : ''}\n  ${r.url}`)].join('\n');
+  const text = [`Team PRs (${rows.length})`, ...rows.map(r => `• ${r.repo} #${r.number} ${r.title} · ${r.author} · ${r.review} · ${r.waiting}d${r.parked ? ' · ' + r.parked : ''}${r.nextWho ? `\n  Next: ${r.nextWho} · ${r.nextStep}` : ''}\n  ${r.url}`)].join('\n');
   copyText(text, e.currentTarget);
 });
 $('prCsv').addEventListener('click', () => {
-  const rows = prExportRows(), cols = ['repo', 'number', 'title', 'author', 'into', 'branch', 'review', 'reviewers', 'jira', 'created', 'waiting', 'parked', 'url'];
-  const head = ['Repo', 'PR', 'Title', 'Author', 'Into', 'Branch', 'Review', 'Reviewers', 'Jira', 'Created', 'Waiting (days)', 'Parked', 'Link'];
+  const rows = prExportRows(), cols = ['repo', 'number', 'title', 'author', 'into', 'branch', 'review', 'approvedBy', 'changesBy', 'reviewers', 'assigned', 'nextWho', 'nextStep', 'jira', 'created', 'waiting', 'parked', 'url'];
+  const head = ['Repo', 'PR', 'Title', 'Author', 'Into', 'Branch', 'Review', 'Approved by', 'Changes asked by', 'Reviewers asked', 'Assigned to (Jira)', 'Next: who', 'Next step', 'Jira', 'Created', 'Waiting (days)', 'Parked', 'Link'];
   const cell = v => { const t = String(v ?? ''); return /[",\n]|^[=+\-@]/.test(t) ? '"' + t.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""') + '"' : t; };   // quoted; no spreadsheet formulas
   const csv = '\ufeff' + [head, ...rows.map(r => cols.map(c => r[c]))].map(r => r.map(cell).join(',')).join('\r\n');
   const a = el('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1254,19 +1368,24 @@ function renderOverview(d, activePrs) {
 
   const attn = $('attn'); attn.textContent = '';
   myFails.forEach(r => listItem(attn, tag('bad', 'fail'), 'Build failed · ' + shortRepo(r.repo), r.reason || r.branch, ago(r.updated), r.url));
-  approved.forEach(p => listItem(attn, tag('ok', 'check'), 'Approved · ready to merge · ' + shortRepo(p.repo) + ' #' + p.number, p.title, waited(p.created), p.url));
+  approved.forEach(p => listItem(attn, tag('ok', 'check'), `Approved · waiting for ${mergerNames(p)} to merge · ${shortRepo(p.repo)} #${p.number}`, p.title, waited(p.created), p.url));
   noReviewer.forEach(p => listItem(attn, tag('warn', 'user'), 'Needs a reviewer · ' + shortRepo(p.repo) + ' #' + p.number, p.title, waited(p.created), p.url));
 
   // Team review health: where active team PRs are stuck. Each row opens Team PRs filtered to it.
   const health = $('health'); health.textContent = '';
   $('healthTotal').textContent = activePrs.length + ' active PRs';
-  [['approved', 'Ready to merge'], ['changes', 'Changes requested'], ['waiting', 'Awaiting review'], ['commented', 'Commented, no decision'], ['none', 'No reviewer']]
-    .forEach(([key, label]) => {
-      const b = el('button'); b.type = 'button';
-      b.append(pill(label, REVIEW[key][1]), el('span', 'cnt', count(activePrs, key)));
-      b.addEventListener('click', () => { $('fClear').click(); $('fRev').value = key; $('fRev').dispatchEvent(new Event('input')); location.hash = 'prs'; });
-      health.append(b);
-    });
+  const groups = GROUP_ORDER.map(g => [g, activePrs.filter(p => prGroup(p) === g).length]), bar = el('div', 'hbar');
+  bar.setAttribute('role', 'img');
+  bar.setAttribute('aria-label', groups.map(([g, n]) => `${GROUP_LABEL[g][0]} ${n}`).join(', '));
+  groups.forEach(([g, n]) => { if (!n) return; const s = el('span', 'seg-' + GROUP_LABEL[g][1]); s.style.flexGrow = n; s.title = `${GROUP_LABEL[g][0]}: ${n}`; bar.append(s); });
+  if (activePrs.length) health.append(bar);
+  groups.forEach(([g, n]) => {
+    const b = el('button'); b.type = 'button';
+    const dot = el('span', 'dot seg-' + GROUP_LABEL[g][1]);
+    b.append(dot, el('span', 'lbl', GROUP_LABEL[g][0]), el('span', 'cnt', n));
+    b.addEventListener('click', () => { $('fClear').click(); prTab = g; try { localStorage.setItem('hub.prTab', g); } catch (e) {} location.hash = 'prs'; });
+    health.append(b);
+  });
   d.reviewQueue.forEach(p => listItem(attn, tag('info', 'eye'), 'Review requested · ' + shortRepo(p.repo) + ' #' + p.number, personName(p.author) + ' · ' + p.title, ago(p.created), p.url));
   d.changesRequested.forEach(p => listItem(attn, tag('warn', 'msg'), 'Changes requested · ' + shortRepo(p.repo) + ' #' + p.number, p.title, ago(p.created), p.url));
   if (!attnCount) emptyBox(attn, "You're all clear", 'Nothing needs you right now.');
@@ -1336,30 +1455,66 @@ function render() {
   $('fCount').textContent = !active ? '' : view === 'builds'
     ? f.runs.length + ' of ' + d.allBuilds.length + ' builds' : openPrs.length + ' of ' + allActive.length + ' PRs';
 
-  const prBody = $('prRows');
-  if (!openPrs.length) emptyRow(prBody, active ? 'No PRs match these filters' : 'No open team PRs', active ? 'Try clearing a filter.' : '', 5);
+  const prBody = $('prRows'), counts = { '': openPrs.length };
+  openPrs.forEach(p => { const g = prGroup(p); counts[g] = (counts[g] || 0) + 1; });
+  $('prTabs').querySelectorAll('button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.g === prTab)); b.querySelector('.n').textContent = counts[b.dataset.g] || 0; });
+  const shown = openPrs.filter(p => !prTab || prGroup(p) === prTab)
+    .sort((a, b) => GROUP_ORDER.indexOf(prGroup(a)) - GROUP_ORDER.indexOf(prGroup(b)) || a.created.localeCompare(b.created));
+  if (!shown.length) emptyRow(prBody, active || prTab ? 'No PRs here' : 'No open team PRs', active ? 'Try clearing a filter.' : '', 6);
   else prBody.textContent = '';
-  for (const p of openPrs) {
+  for (const p of shown) {
     const tr = prRow(prBody, p);
-    const rv = el('div', 'review'); rv.append(reviewPill(p));
-    if (p.reviewers.length) { const s = el('span', 'avs'); p.reviewers.forEach(r => s.append(avatar(r))); rv.append(s); }
-    cell(tr, rv, 'fit');
-    cell(tr, toggleButton(p.url, 'Hide'), 'fit');
+    cell(tr, reviewDetail(p)); cell(tr, nextCell(p)); cell(tr, assignedCell(p)); cell(tr, waited(p.created), 'fit');
+    tr.cells[2].dataset.label = 'Next step'; tr.cells[3].dataset.label = 'Assigned to (Jira)';   // shown on phones, where there is no header
+    cell(tr, hideButton(p.url, false), 'fit');
   }
   $('parkedCount').textContent = parked.length;
   const parkedBody = $('parkedRows');
-  if (!parked.length) emptyRow(parkedBody, 'Nothing parked', '', 5); else parkedBody.textContent = '';
+  if (!parked.length) emptyRow(parkedBody, 'Nothing parked', '', 4); else parkedBody.textContent = '';
   for (const p of parked) {
     const tr = prRow(parkedBody, p);
-    cell(tr, pill(whyParked(p), 's-off'), 'fit');
-    cell(tr, hiddenPrs.has(p.url) ? toggleButton(p.url, 'Unhide') : '', 'fit');
+    cell(tr, pill(whyParked(p), 's-off'), 'fit'); cell(tr, waited(p.created), 'fit');
+    cell(tr, hiddenPrs.has(p.url) ? hideButton(p.url, true) : '', 'fit');
   }
 
   const body = $('rows');
   if (!f.runs.length) emptyRow(body, active ? 'No builds match these filters' : 'No builds yet', active ? 'Try clearing a filter.' : '', 4);
   else body.textContent = '';
   for (const r of f.runs) buildRow(body, r);
-  renderEnvs(d);
+  renderEnvs(d); renderBuildDays(d, f.runs);
+}
+
+// Builds per day (the filtered list): how many passed and failed each day, so a bad day stands out
+function renderBuildDays(d, runs) {
+  const box = $('bdChart'); box.textContent = '';
+  // Start where the hub's history starts (deploys are kept for deployDays), so missing history doesn't look like a quiet week.
+  const windowStart = dayKey(Date.now() - ((d.buildDays || 14) - 1) * DAY);
+  const firstDeploy = (d.teamDeploys || []).map(x => dayKey(x.at)).sort()[0];
+  const start = firstDeploy && firstDeploy > windowStart ? firstDeploy : windowStart, today = dayKey(Date.now());
+  const per = [];
+  for (let at = new Date(start + 'T12:00:00'); dayKey(at) <= today; at = new Date(at.getTime() + DAY)) per.push({ key: dayKey(at), at, ok: 0, bad: 0, oth: 0 });
+  const byKey = new Map(per.map(x => [x.key, x]));
+  runs.forEach(r => { const x = byKey.get(dayKey(r.updated)); if (!x) return; const s = runState(r); if (s === 'success') x.ok++; else if (STATES[s] && STATES[s][1] === 's-bad') x.bad++; else x.oth++; });
+  const days = per.filter(x => x.ok + x.bad + x.oth || ![0, 6].includes(x.at.getDay()) || x.key === today);   // quiet weekends left out
+  const passed = days.reduce((n, x) => n + x.ok, 0), failed = days.reduce((n, x) => n + x.bad, 0), total = days.reduce((n, x) => n + x.ok + x.bad + x.oth, 0);
+  const since = new Date(start + 'T12:00:00').toLocaleDateString([], { day: 'numeric', month: 'short' });
+  $('bdSum').textContent = total ? `${total} since ${since} · ${Math.round(100 * passed / Math.max(1, passed + failed))}% passed` : '';
+  box.setAttribute('aria-label', `Builds per day since ${since}: ${passed} passed, ${failed} failed`);
+  if (!total) { emptyBox(box, 'No builds in this view', 'Try clearing a filter.'); return; }
+  const max = Math.max(1, ...days.map(x => x.ok + x.bad + x.oth));
+  days.forEach(x => {
+    const n = x.ok + x.bad + x.oth, day = el('div', 'bday' + (x.key === today ? ' today' : '')), bar = el('div', 'bar'), col = el('div', 'col');
+    col.style.height = n ? `calc(${Math.round(100 * n / max)}% - 20px)` : '0';
+    [['ok', x.ok], ['bad', x.bad], ['oth', x.oth]].forEach(([c, v]) => { if (v) { const s = el('span', c); s.style.flexGrow = v; col.append(s); } });
+    bar.append(el('span', 'n', n ? String(n) : ''), col);
+    const label = x.at.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+    day.title = `${label}: ${n} build${n === 1 ? '' : 's'} · ${x.ok} passed · ${x.bad} failed${x.oth ? ` · ${x.oth} other (cancelled, running)` : ''}`;
+    const lab = el('span', 'd');
+    if (x.key === today) lab.textContent = 'Today';
+    else lab.append(el('span', 'l', x.at.toLocaleDateString([], { weekday: 'short', day: 'numeric' })), el('span', 's', String(x.at.getDate())));
+    day.append(bar, lab);
+    box.append(day);
+  });
 }
 
 // Environments: the latest deploy on each (DEV4, DEV10, INT ...), what it built, who started it.
@@ -1374,26 +1529,29 @@ function renderEnvs(d) {
   const box = $('envs'); box.textContent = '';
   const envs = d.deployEnvs || [], all = d.deploys || [];
   envs.forEach(env => {
-    const list = all.filter(x => x.env === env), last = list[0], card = el('div', 'env' + (last && runState(last) === 'failure' ? ' bad' : '')), top = el('div', 'top');
-    top.append(el('b', null, env), last ? statePill(last) : pill('No deploys', 's-off'));
-    card.append(top);
+    const list = all.filter(x => x.env === env), last = list[0], row = el('div', 'env' + (last && runState(last) === 'failure' ? ' bad' : ''));
+    const name = el('div', 'name'); name.append(el('b', null, env), last ? statePill(last) : pill('No deploys', 's-off'));
+    const what = el('div', 'what'), by = el('div', 'by'), prev = el('div', 'prev');
     if (last) {
-      if (last.branch) { const br = el('div', 'branch', last.branch); br.title = last.branch; card.append(br); }
-      const svc = el('div', 'svc'), all = last.services;   // unknown for older runs: no chips rather than a vague one
-      all.slice(0, 5).forEach(x => { const c = el('span', 'chip', svcName(x.code)); if (x.repo) c.title = x.repo; svc.append(c); });
-      if (all.length > 5) { const more = el('span', 'chip', `+${all.length - 5} more`); more.title = all.slice(5).map(x => svcName(x.code)).join(', '); svc.append(more); }
-      svc.hidden = !all.length;
-      const by = el('div', 'by'); by.append(avatar(last.who), `${personName(last.who)} · ${ago(last.at)}`);
-      card.append(svc, by);
-      if (last.failed) card.append(el('div', 'err-line', last.failed));
+      what.append(el('div', 'branch', last.branch || 'branch not read yet'));
+      if (last.services.length) {   // unknown for older runs: no chips rather than a vague one
+        const svc = el('div', 'svc');
+        last.services.forEach(x => { const c = el('span', 'chip', svcName(x.code)); if (x.repo) c.title = x.repo; svc.append(c); });
+        what.append(svc);
+      }
+      if (last.failed) what.append(el('div', 'err-line', last.failed));
+      const tx = el('div', 't'); tx.append(personName(last.who), el('span', null, ago(last.at)));
+      by.append(avatar(last.who), tx);
       const day = list.filter(x => Date.now() - new Date(x.at) < DAY).length;
-      if (list.length > 1) { const prev = el('div', 'prev', `${day} deploy${day === 1 ? '' : 's'} in 24h · before: ${personName(list[1].who)}, ${ago(list[1].at)}`); prev.title = list[1].branch || ''; card.append(prev); }
-    } else card.append(el('div', 'prev', `None in the last ${d.deployDays || 3} days`));
+      prev.append(el('b', null, `${day} deploy${day === 1 ? '' : 's'}`), ' in 24h');
+      if (list[1]) { prev.append(el('br'), `Before: ${personName(list[1].who)}, ${ago(list[1].at)}`); prev.title = list[1].branch || ''; }
+    } else what.append(el('div', 'prev', `No deploys in the last ${d.deployDays || 3} days`));
+    row.append(name, what, by, prev);
     if ((d.triggerEnvs || []).includes(env)) {
       const go = el('button', 'btn sm go', 'Deploy…'); go.type = 'button'; go.title = `Start a ${env} deploy with your GitHub login`;
-      go.addEventListener('click', () => openDeploy(env)); card.append(go);
-    }
-    box.append(card);
+      go.addEventListener('click', () => openDeploy(env)); row.append(go);
+    } else row.append(el('span'));   // keeps the columns lined up
+    box.append(row);
   });
   $('envs').closest('.panel').hidden = !envs.length;
 }
@@ -1631,7 +1789,7 @@ async function loadBranches(refresh) {
   renderBranches();
 }
 function renderBranches() {
-  const d = branchData; if (!d) return;
+  const d = branchData; if (!d || !state) return;   // links need the org name from the first state load
   const me = viewer() || d.me, repoSel = $('brRepo');
   if (repoSel.dataset.filled !== '1') { [...new Set(d.branches.map(b => b.repo))].sort().forEach(r => { const o = el('option', null, shortRepo(r)); o.value = r; repoSel.append(o); }); repoSel.dataset.filled = '1'; }
   document.querySelectorAll('#brWho button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.w === brWho)));
@@ -1737,7 +1895,7 @@ async function loadStandup() {
   const loggedSec = logged.reduce((n, e) => n + e.seconds, 0);
   // Today
   mine.filter(p => p.review === 'changes').forEach(p => T.push({ icon: 'msg', cls: 'bad', title: `Address review comments on ${pr(p)}`, sub: p.title, url: p.url, text: `Address review comments on ${prLine(p)}` }));
-  mine.filter(p => p.review === 'approved').forEach(p => T.push({ icon: 'merge', cls: 'ok', title: `Merge ${pr(p)}`, sub: 'Approved · ' + p.title, url: p.url, text: `Merge ${prLine(p)} (approved)` }));
+  mine.filter(p => p.review === 'approved').forEach(p => T.push({ icon: 'merge', cls: 'ok', title: `Ask ${mergerNames(p)} to merge ${pr(p)}`, sub: 'Approved · ' + p.title, url: p.url, text: `${prLine(p)} approved, waiting for ${mergerNames(p)} to merge` }));
   state.reviewQueue.forEach(p => T.push({ icon: 'eye', cls: 'info', title: `Review ${pr(p)} for ${personName(p.author)}`, sub: p.title, url: p.url, text: `Review ${prLine(p)} for ${personName(p.author)}` }));
   (myJiraList() || []).filter(t => t.cat === 'indeterminate' && !isAfq(t)).slice(0, 5).forEach(t =>
     T.push({ icon: 'arrow', cls: 'brand', title: `Continue ${t.key}`, sub: `${t.summary} · ${t.status}`, url: jiraUrl(t.key), text: `Continue ${t.key} ${t.summary} (${t.status})` }));
@@ -2223,6 +2381,12 @@ $('impForm').addEventListener('submit', e => {
 });
 $('impMore').addEventListener('click', () => checkImpact(imp.findings.findIndex(n => n.usages == null)));
 
+let prTab = ''; try { prTab = localStorage.getItem('hub.prTab') || ''; } catch (e) {}
+$('prTabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  prTab = b.dataset.g; try { localStorage.setItem('hub.prTab', prTab); } catch (e2) {}
+  render();
+});
 FILTERS.forEach(id => {
   if (FIXED.includes(id)) { try { $(id).value = localStorage.getItem('hub.' + id) || ''; } catch (e) {} }
   $(id).addEventListener('input', () => { try { localStorage.setItem('hub.' + id, $(id).value); } catch (e) {} render(); });

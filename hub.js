@@ -22,6 +22,10 @@ let team, loginPrefixes;
 // (first 16 hex of sha256), so no names are in the public repo.
 const teamFingerprint = e => crypto.createHash('sha256').update(e.toLowerCase()).digest('hex').slice(0, 16);
 const excluded = new Set(cfg.teamExclude || []);
+// Who may merge PRs (the architects): config mergers lists a fingerprint of each GitHub login, so the public repo names nobody.
+// Their logins are learned from the PRs they are asked to review or have reviewed.
+const mergerPrints = new Set(cfg.mergers || []), knownMergers = new Set();
+const noteMerger = login => { if (login && mergerPrints.has(teamFingerprint(login))) knownMergers.add(login); };
 function setTeam(list) {
   team = new Set(list.map(e => e.toLowerCase()).filter(e => !excluded.has(teamFingerprint(e))));
   loginPrefixes = [...team].map(e => e.split('@')[0].replace(/\./g, '-'));   // GitHub logins follow first.last@ -> first-last-amla
@@ -377,6 +381,9 @@ function reviewOf(reviews, pr) {
     if (r.state === 'COMMENTED') { if (!latest.has(r.user.login)) latest.set(r.user.login, 'COMMENTED'); }
     else latest.set(r.user.login, r.state);   // APPROVED / CHANGES_REQUESTED / DISMISSED replace earlier ones
   }
+  [...latest.keys(), ...pr.reviewers].forEach(noteMerger);
+  pr.reviewedBy = [...latest].filter(([, st]) => st !== 'DISMISSED')
+    .map(([login, st]) => ({ login, state: { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', COMMENTED: 'commented' }[st] }));
   const states = [...latest.values()];
   if (states.includes('CHANGES_REQUESTED')) return 'changes';
   if (states.includes('APPROVED')) return 'approved';
@@ -393,7 +400,7 @@ async function addReviewStatus(list) {
     await Promise.all(todo.slice(i, i + 10).map(async p => {
       const key = `${p.repo}#${p.number}`, before = (reviewCache.get(key) || {}).review;
       const reviews = await ghAll(`/repos/${cfg.owner}/${p.repo}/pulls/${p.number}/reviews`, 3), review = reviewOf(reviews, p);
-      reviewCache.set(key, { updated: p.updated, review, reviewAt: reviewedAt(reviews, review) });
+      reviewCache.set(key, { updated: p.updated, review, reviewAt: reviewedAt(reviews, review), reviewedBy: p.reviewedBy });
       // Tell the author when their PR is approved or gets changes requested.
       const author = teamByLogin(p.author);
       if (seeded && author && before && before !== review && (review === 'approved' || review === 'changes')) {
@@ -401,20 +408,39 @@ async function addReviewStatus(list) {
       }
     }));
   }
-  list.forEach(p => { const c = reviewCache.get(`${p.repo}#${p.number}`); p.review = c.review; p.reviewAt = c.reviewAt; });
+  list.forEach(p => { const c = reviewCache.get(`${p.repo}#${p.number}`); Object.assign(p, { review: c.review, reviewAt: c.reviewAt, reviewedBy: c.reviewedBy || [] }); p.next = nextStep(p); });
+}
+// Who a PR waits on, and for what. Changes requested: the author fixes them, until they ask that reviewer again (then the
+// reviewer re-reviews). Approved: the architect who is a reviewer on it merges it (any architect when none is). Otherwise the
+// requested reviewers review it; with none, the author asks for one. Approved PRs are merged by the architects (mergers).
+function nextStep(p, mergers = [...knownMergers]) {
+  const asked = p.reviewers, by = l => p.reviewedBy.filter(r => r.state === l).map(r => r.login);
+  if (p.draft) return { who: [p.author], what: 'draft' };
+  const changes = by('changes'), again = changes.filter(l => asked.includes(l));
+  if (changes.length) return again.length ? { who: again, what: 're-review' } : { who: [p.author], what: 'fix', from: changes };
+  if (p.review === 'approved') {
+    // The architect on the PR (asked to review, or reviewed it) merges it; with none of them on it, any of them
+    const on = new Set([...p.reviewers, ...p.reviewedBy.map(r => r.login)]);
+    const can = mergers.filter(l => l !== p.author), mine = can.filter(l => on.has(l));
+    return { who: mine.length ? mine : can.length ? can : [p.author], what: 'merge' };
+  }
+  if (asked.length) return { who: asked, what: 'review' };
+  if (p.review === 'commented') return { who: [p.author], what: 'reply', from: by('commented') };
+  return { who: [p.author], what: 'ask' };
 }
 
 async function pollPrs() {
   const lists = await Promise.all(cfg.repos.map(async repo =>
     (await ghAll(`/repos/${cfg.owner}/${repo}/pulls?state=open`, 10).catch(skipMissing(repo))).map(p => {
       const pr = { ...prSummary(p, repo), base: p.base.ref, head: p.head.ref, updated: p.updated_at,
-        reviewers: p.requested_reviewers.map(u => u.login) };
+        reviewers: p.requested_reviewers.map(u => u.login), assignees: (p.assignees || []).map(u => u.login) };
       pr.parked = parkedReason(pr);
       return pr;
     })));
   const open = lists.flat().sort((a, b) => b.created.localeCompare(a.created));   // newest first
   prs = open.filter(p => inTeam(p.author));
   openHeads = new Set(open.map(p => `${p.repo}:${p.head}`));
+  open.forEach(p => p.reviewers.forEach(noteMerger));
   await addReviewStatus(prs);
   // Review requests come from each PR's requested reviewers, so one server works for the whole team.
   requests = open.filter(p => p.reviewers.some(l => team.size && teamByLogin(l)));
@@ -1183,7 +1209,7 @@ function prNudges(now) {
     const person = teamByLogin(p.author);
     if (!person) continue;
     const name = `${shortRepo(p.repo)} #${p.number}`, add = (title) => (byPerson[person] = byPerson[person] || []).push({ title, body: p.title, url: p.url });
-    if (p.review === 'approved') add(`Your PR ${name} was approved${p.reviewAt ? ' ' + daysAgo(p.reviewAt, now) : ''}. Merge it`);
+    if (p.review === 'approved') add(`Your PR ${name} was approved${p.reviewAt ? ' ' + daysAgo(p.reviewAt, now) : ''}. Waiting for an architect to merge it`);
     else if (p.review === 'changes' && (!p.reviewAt || now - new Date(p.reviewAt) >= 86400000)) add(`Changes requested on ${name}${p.reviewAt ? ' ' + daysAgo(p.reviewAt, now) : ''}. Address them`);
     const done = keysIn(`${p.title} ${p.head}`).map(k => jiraKeys[k]).find(t => t && t.cat === 'done');
     if (done) add(`${done.key} is Done in Jira but its PR ${name} is still open`);
@@ -1441,7 +1467,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Used by test/popups.test.js; starting the hub (node hub.js) is below.
-module.exports = { stageOf, dispatchInputs, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
+module.exports = { stageOf, dispatchInputs, nextStep, poll, pollJira, syncTeam, timeReminder, runJobs, parseDuration, hooks, popup, server, nudge, nudgeText, lastWorkday,
   setSession: s => { token = s.token; email = s.email; },
   state: () => ({ runs: [...runs.values()], deploys: [...deploys.values()], prs, requests, lastError, events }) };
 

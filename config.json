@@ -15,6 +15,7 @@
   "teamDays": 90,
   "teamMinTickets": 5,
   "teamExclude": ["2e4c77a7b934e538", "2954d8822091c780", "8dc8fc9bd26b678a", "ec200588f5fd2af1", "61356dab0992c982", "79def7b224b772a4", "36a4ab4f81efc66a", "e708606fe4d01955", "0327bf1cc5e0f962", "bb173195733fc6d5", "dc1d7dcfaa36e8d4", "1872e8421f5957ac"],
+  "mergers": ["7b039ec50a4707a2", "f9508f625ec469f2"],
   "team": [],
   "jiraUrl": "https://amla.atlassian.net/browse/",
   "links": [

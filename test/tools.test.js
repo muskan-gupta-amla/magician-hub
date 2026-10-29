@@ -425,6 +425,24 @@ test('branch delete: refused for protected branches, unknown branches and other 
   assert.equal((await postJson('/api/branch-delete', { repo: 'znode10-api-migration', branch: 'Z10-1-change-int', sha: 'x' }, {})).status, 403);   // no hub header
 });
 
+test('PR next step: who it waits on, for every review state', () => {
+  const pr = (o) => hub.nextStep({ author: 'asha-rao-amla', reviewers: [], assignees: [], reviewedBy: [], review: 'none', draft: false, ...o });
+  assert.deepEqual(pr({ draft: true }), { who: ['asha-rao-amla'], what: 'draft' });
+  assert.deepEqual(pr({}), { who: ['asha-rao-amla'], what: 'ask' });
+  assert.deepEqual(pr({ reviewers: ['ben-kumar-amla'], review: 'waiting' }), { who: ['ben-kumar-amla'], what: 'review' });
+  const changed = { review: 'changes', reviewedBy: [{ login: 'ben-kumar-amla', state: 'changes' }, { login: 'chitra-iyer-amla', state: 'approved' }] };
+  assert.deepEqual(pr(changed), { who: ['asha-rao-amla'], what: 'fix', from: ['ben-kumar-amla'] });
+  assert.deepEqual(pr({ ...changed, reviewers: ['ben-kumar-amla'] }), { who: ['ben-kumar-amla'], what: 're-review' });   // asked again
+  const approved = { review: 'approved', reviewedBy: [{ login: 'ben-kumar-amla', state: 'approved' }] };
+  const merge = (o, mergers) => hub.nextStep({ author: 'asha-rao-amla', reviewers: [], assignees: ['asha-rao-amla'], reviewedBy: [], review: 'none', draft: false, ...o }, mergers);
+  assert.deepEqual(merge(approved, ['esha-singh-amla', 'ravi-das-amla']), { who: ['esha-singh-amla', 'ravi-das-amla'], what: 'merge' });   // the architects, not the assignee
+  assert.deepEqual(merge({ ...approved, reviewers: ['ravi-das-amla'] }, ['esha-singh-amla', 'ravi-das-amla']), { who: ['ravi-das-amla'], what: 'merge' });   // the architect asked to review
+  assert.deepEqual(merge({ review: 'approved', reviewedBy: [{ login: 'esha-singh-amla', state: 'approved' }] }, ['esha-singh-amla', 'ravi-das-amla']), { who: ['esha-singh-amla'], what: 'merge' });   // the architect who approved
+  assert.deepEqual(merge({ ...approved, author: 'esha-singh-amla' }, ['esha-singh-amla', 'ravi-das-amla']), { who: ['ravi-das-amla'], what: 'merge' });   // not their own
+  assert.deepEqual(merge(approved, []), { who: ['asha-rao-amla'], what: 'merge' });   // nobody known yet
+  assert.deepEqual(pr({ review: 'commented', reviewedBy: [{ login: 'ben-kumar-amla', state: 'commented' }] }), { who: ['asha-rao-amla'], what: 'reply', from: ['ben-kumar-amla'] });
+});
+
 test('deploy: the workflow inputs and their defaults are read from the workflow file', () => {
   const i = hub.dispatchInputs(DEV4_YML);
   assert.deepEqual(Object.keys(i), ['tenant', 'environment', 'branch', 'namespace', 'services', 'all']);
@@ -477,7 +495,7 @@ test('12:00 PR nudges: once a day, each to the PR author only', async () => {
   assert.deepEqual([ran.stuckNudges, ran.downMergeNudges], [[], []]);   // nothing stuck in review/QA; no down-merge to chase
   const sent = hub.state().events.slice(before).map(e => `${e.person} | ${e.title}`);
   assert.equal(sent.length, 2);
-  assert.match(sent[0], /^ben\.kumar@amla\.io \| Your PR api #1 was approved \d+ days ago\. Merge it$/);
+  assert.match(sent[0], /^ben\.kumar@amla\.io \| Your PR api #1 was approved \d+ days ago\. Waiting for an architect to merge it$/);
   assert.equal(sent[1], 'ben.kumar@amla.io | Z10-1 is Done in Jira but its PR api #1 is still open');
   assert.deepEqual(await hub.runJobs(noon), {});   // already sent today
 });
