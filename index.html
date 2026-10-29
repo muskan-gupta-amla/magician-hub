@@ -1111,7 +1111,7 @@ function allBuilds(d) {
   const isCheck = new RegExp(d.checkWorkflows || 'code review|spectral|lint|nuget', 'i');
   d.runs.forEach(r => { r.kind = isCheck.test(r.workflow) ? 'check' : 'build'; });
   const deployRows = (d.teamDeploys || []).map(x => ({ kind: 'deploy', id: 'd' + x.id, repo: (x.services[0] || {}).repo || 'deploy', services: x.services, env: x.env,
-    branch: x.branch || '(branch not read yet)', workflow: `Deploy to ${x.env}`, status: x.status, conclusion: x.conclusion, url: x.url, updated: x.updated || x.at,
+    branch: x.branch || (x.detailed ? '–' : 'reading branch…'), workflow: `Deploy to ${x.env}`, status: x.status, conclusion: x.conclusion, url: x.url, updated: x.updated || x.at,
     author: x.who, reason: x.failed || '' }));
   return [...d.runs, ...deployRows].sort((a, b) => b.updated.localeCompare(a.updated));
 }

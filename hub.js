@@ -221,21 +221,27 @@ async function pollDeploys() {
   const since = new Date(Date.now() - (cfg.deployDays || 14) * 86400000).toISOString(), envs = (cfg.deployEnvs || []).map(e => e.toUpperCase());
   const list = (await ghAll(`/repos/${cfg.owner}/${cfg.deployRepo}/actions/runs?created=${encodeURIComponent('>=' + since.slice(0, 10))}`, seeded ? 1 : 20, x => x.workflow_runs))
     .filter(r => DEPLOY_RE.test(r.name || '') && (!envs.length || envs.includes(DEPLOY_RE.exec(r.name)[1].toUpperCase())));
-  let budget = rateLow() ? 0 : cfg.deployDetailsPerPoll || 6, changed = false;   // older runs are filled in a few per minute, newest first
-  for (const r of list.sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+  let changed = false;
+  const finished = [];   // runs that just finished, for the popup (after their details are read)
+  for (const r of list) {
     const env = DEPLOY_RE.exec(r.name)[1].toUpperCase(), prev = deploys.get(r.id);
     if (prev && prev.detailed) continue;
     const login = (r.triggering_actor || r.actor || {}).login || '';
     const d = { id: r.id, env, who: teamByLogin(login) || login, status: r.status, conclusion: r.conclusion, url: r.html_url, at: r.created_at, updated: r.updated_at,
       services: prev ? prev.services : [], branch: prev ? prev.branch : '', failed: prev ? prev.failed : '', detailed: false };
-    if (r.status !== 'completed' || budget-- > 0) await deployDetails(d);   // running ones always: their result is news
     deploys.set(r.id, d); changed = true;
-    // Your deploy finished: popup for whoever started it (team members only)
-    if (seeded && prev && prev.status !== 'completed' && r.status === 'completed' && team.has(d.who)) {
-      notify(d.who, `${env}: deploy ${{ success: 'passed', failure: 'failed' }[r.conclusion] || (r.conclusion || '').replace('_', ' ')}`,
-        d.services.map(x => x.code).join(', ') + (d.failed ? ` · ${d.failed}` : ''), r.html_url);
-    }
+    if (seeded && prev && prev.status !== 'completed' && r.status === 'completed') finished.push(d);
   }
+  // Details (services, branch, what failed) for every stored deploy that still lacks them, not only the newest page: running ones
+  // first, then newest. As many as the GitHub budget allows (40 a minute when plenty is left), 6 at a time.
+  const budget = rateLow() ? 0 : rate.remaining === null || rate.remaining > 2000 ? cfg.deployDetailsPerPoll || 40 : 6;
+  const todo = [...deploys.values()].filter(d => !d.detailed && d.at >= since)
+    .sort((x, y) => (x.status === 'completed') - (y.status === 'completed') || y.at.localeCompare(x.at));
+  const pick = [...todo.filter(d => d.status !== 'completed'), ...todo.filter(d => d.status === 'completed').slice(0, budget)];
+  for (let i = 0; i < pick.length; i += 6) { await Promise.all(pick.slice(i, i + 6).map(d => deployDetails(d).catch(() => {}))); changed = true; }
+  // Your deploy finished: popup for whoever started it (team members only)
+  finished.filter(d => team.has(d.who)).forEach(d => notify(d.who, `${d.env}: deploy ${{ success: 'passed', failure: 'failed' }[d.conclusion] || (d.conclusion || '').replace('_', ' ')}`,
+    d.services.map(x => x.code).join(', ') + (d.failed ? ` · ${d.failed}` : ''), d.url));
   for (const [id, d] of deploys) if (d.at < since) { deploys.delete(id); changed = true; }
   if (changed) saveDeploys();
 }
