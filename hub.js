@@ -863,17 +863,17 @@ async function logWork({ key, time, date, comment }) {
   return { ok: true, key, seconds, day };
 }
 
-// One click: the daily scrum (30 minutes by default) on the team's current stand-up ticket, the newest one the
-// scrumTicketJql search finds (a new ticket is opened every few weeks). Once a day.
+// One click: the daily scrum (30 minutes by default) on the month's housekeeping ticket, the newest one the
+// scrumTicketJql search finds (a new one is opened every month). Once a day.
 async function logScrum({ date }) {
   if (HOSTED) return { error: 'Log time in Jira directly: the team server can\'t log time as you.' };
   if (JIRA_MODE !== 'api' || jiraNeedsToken) return { error: 'Connect your Jira API token on the Time Log page first.' };
-  const [ticket] = await jiraSearch(cfg.scrumTicketJql || 'project = Z10 AND summary ~ "\\"10x - Daily Stand-ups\\"" ORDER BY created DESC', 1);
-  if (!ticket) return { error: 'No stand-up ticket found in Jira (scrumTicketJql in config.json).' };
+  const [ticket] = await jiraSearch(cfg.scrumTicketJql || 'project = Z10 AND issuetype = HouseKeeping AND summary ~ "\\"House Keeping Activities\\"" ORDER BY created DESC', 1);
+  if (!ticket) return { error: 'No housekeeping ticket found in Jira (scrumTicketJql in config.json).' };
   const today = new Date().toLocaleDateString('en-CA'), day = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : today;
   const done = (await timeFor(jiraAuth.email)).entries.some(e => e.key === ticket.key && new Date(e.started).toLocaleDateString('en-CA') === day);
   if (done) return { error: `Daily scrum is already logged on ${ticket.key} for ${day}.` };
-  const r = await logWork({ key: ticket.key, time: cfg.scrumTime || '30m', date: day, comment: cfg.scrumComment || 'Magicians Daily Scrum' });
+  const r = await logWork({ key: ticket.key, time: cfg.scrumTime || '30m', date: day, comment: cfg.scrumComment || 'Daily stand-up' });
   return r.error ? r : { ...r, summary: ticket.summary };
 }
 

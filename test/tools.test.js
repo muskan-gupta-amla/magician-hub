@@ -113,7 +113,7 @@ globalThis.fetch = async (url, opts) => {
       issue('Z10-7', 'Fixed earlier', 'Done', 'done', 'asha.rao@amla.io')];
     if (jql.startsWith('assignee = currentUser()')) return reply({ issues: [] });
     if (jql.startsWith('cf[10117] = "Magicians"')) return reply({ issues: teamAnswer.map((a, i) => issue(`Z10-${900 + i}`, 'Team ticket', 'Done', 'done', a)) });
-    if (jql.includes('Daily Stand-ups')) return reply({ issues: [issue('Z10-60', '10x - Daily Stand-ups', 'Open', 'new', null)] });   // the current stand-up ticket
+    if (jql.includes('House Keeping Activities')) return reply({ issues: [issue('Z10-60', 'House Keeping Activities - November 2026', 'Open', 'new', null)] });   // the month's housekeeping ticket
     if (jql.includes('sprint in openSprints()')) {   // the Daily Scrum's sprint card
       const sprint = { id: 20, name: 'Magicians Sprint 20', state: 'active', startDate: '2026-10-05T00:00:00Z', endDate: '2026-10-26T00:00:00Z', goal: '' };
       return reply({ issues: [['Z10-2', 'indeterminate'], ['Z10-7', 'done'], ['Z10-50', 'new']].map(([key, cat]) =>
@@ -377,13 +377,13 @@ test('log time: writes the worklog to Jira as you, with date and comment', async
   assert.equal(s.canLogTime, 'hub@amla.io');   // whose time a Log writes
 });
 
-test('daily scrum in one click: 30m on the current stand-up ticket, once a day', async () => {
+test('daily scrum in one click: 30m on the month\'s housekeeping ticket, once a day', async () => {
   const before = worklogs.length;
   const res = await postJson('/api/scrum-log', {}), r = res.body;
   assert.equal(res.status, 200, JSON.stringify(r));
-  assert.deepEqual([r.ok, r.key, r.seconds, r.summary], [true, 'Z10-60', 1800, '10x - Daily Stand-ups']);
+  assert.deepEqual([r.ok, r.key, r.seconds, r.summary], [true, 'Z10-60', 1800, 'House Keeping Activities - November 2026']);
   assert.equal(worklogs.length, before + 1);
-  assert.equal(worklogs.at(-1).comment.content[0].content[0].text, 'Magicians Daily Scrum');
+  assert.equal(worklogs.at(-1).comment.content[0].content[0].text, 'Daily stand-up');
   assert.equal((await postJson('/api/scrum-log', {}, {})).status, 403);   // no hub header: another website
 });
 
